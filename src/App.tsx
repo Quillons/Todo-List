@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
+import type { Session } from '@supabase/supabase-js'
 import {
   getSupabaseClient,
   getSupabaseConfigError,
@@ -24,6 +25,13 @@ function getErrorMessage(error: unknown) {
 }
 
 function App() {
+  const [session, setSession] = useState<Session | null>(null)
+  const [sessionLoading, setSessionLoading] = useState(true)
+  const [authEmail, setAuthEmail] = useState('')
+  const [authPassword, setAuthPassword] = useState('')
+  const [authLoading, setAuthLoading] = useState(false)
+  const [authError, setAuthError] = useState<string | null>(null)
+
   const [projects, setProjects] = useState<Project[]>([])
   const [tasks, setTasks] = useState<Task[]>([])
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(
@@ -57,6 +65,26 @@ function App() {
   const taskMessages = [configError, tasksError, taskActionError].filter(
     Boolean,
   ) as string[]
+  const authMessages = [configError, authError].filter(Boolean) as string[]
+
+  function clearAppState() {
+    setProjects([])
+    setTasks([])
+    setSelectedProjectId(null)
+    setNewProjectName('')
+    setEditingProjectId(null)
+    setEditingProjectName('')
+    setNewTaskText('')
+    setShowCompleted(false)
+    setProjectsError(null)
+    setTasksError(null)
+    setProjectActionError(null)
+    setTaskActionError(null)
+    setProjectsLoading(false)
+    setTasksLoading(false)
+    setProjectSubmitting(false)
+    setTaskSubmitting(false)
+  }
 
   async function fetchProjects() {
     setProjectsLoading(true)
@@ -107,16 +135,79 @@ function App() {
 
   useEffect(() => {
     if (configError) {
+      setSession(null)
+      setSessionLoading(false)
+      clearAppState()
+      return
+    }
+
+    const supabase = getSupabaseClient()
+    let isMounted = true
+
+    const loadSession = async () => {
+      setSessionLoading(true)
+
+      try {
+        const { data, error } = await supabase.auth.getSession()
+
+        if (error) {
+          throw error
+        }
+
+        if (!isMounted) {
+          return
+        }
+
+        setSession(data.session ?? null)
+
+        if (!data.session) {
+          clearAppState()
+        }
+      } catch (error) {
+        if (!isMounted) {
+          return
+        }
+
+        setAuthError(getErrorMessage(error))
+        setSession(null)
+        clearAppState()
+      } finally {
+        if (isMounted) {
+          setSessionLoading(false)
+        }
+      }
+    }
+
+    void loadSession()
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      setSession(nextSession)
+      setSessionLoading(false)
+
+      if (!nextSession) {
+        clearAppState()
+      }
+    })
+
+    return () => {
+      isMounted = false
+      subscription.unsubscribe()
+    }
+  }, [configError])
+
+  useEffect(() => {
+    if (!session || configError) {
       setProjects([])
-      setTasks([])
       return
     }
 
     void fetchProjects()
-  }, [configError])
+  }, [configError, session?.user.id])
 
   useEffect(() => {
-    if (!selectedProjectId) {
+    if (!session || !selectedProjectId) {
       setTasks([])
       setTasksError(null)
       setTaskActionError(null)
@@ -132,7 +223,7 @@ function App() {
 
     setTasks([])
     void fetchTasks(selectedProjectId)
-  }, [configError, selectedProjectId])
+  }, [configError, selectedProjectId, session?.user.id])
 
   useEffect(() => {
     if (!selectedProjectId || projectsLoading) {
@@ -149,8 +240,60 @@ function App() {
     }
   }, [projects, projectsLoading, selectedProjectId])
 
+  const handleSignIn = async () => {
+    const email = authEmail.trim()
+    const password = authPassword.trim()
+
+    if (!email || !password) {
+      setAuthError('Email and password are both required.')
+      return
+    }
+
+    setAuthLoading(true)
+    setAuthError(null)
+
+    try {
+      const supabase = getSupabaseClient()
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      })
+
+      if (error) {
+        throw error
+      }
+    } catch (error) {
+      setAuthError(getErrorMessage(error))
+    } finally {
+      setAuthLoading(false)
+    }
+  }
+
+  const handleSignOut = async () => {
+    setAuthLoading(true)
+    setAuthError(null)
+
+    try {
+      const supabase = getSupabaseClient()
+      const { error } = await supabase.auth.signOut()
+
+      if (error) {
+        throw error
+      }
+    } catch (error) {
+      setAuthError(getErrorMessage(error))
+    } finally {
+      setAuthLoading(false)
+    }
+  }
+
   const handleCreateProject = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+
+    if (!session) {
+      setProjectActionError('You must be signed in to create a project.')
+      return
+    }
 
     const trimmedName = newProjectName.trim()
     if (!trimmedName) {
@@ -165,6 +308,7 @@ function App() {
       const supabase = getSupabaseClient()
       const { error } = await supabase.from('projects').insert({
         name: trimmedName,
+        user_id: session.user.id,
       })
 
       if (error) {
@@ -192,6 +336,11 @@ function App() {
   }
 
   const handleSaveProjectEdit = async (projectId: string) => {
+    if (!session) {
+      setProjectActionError('You must be signed in to update a project.')
+      return
+    }
+
     const trimmedName = editingProjectName.trim()
     if (!trimmedName) {
       setProjectActionError('Project name cannot be empty.')
@@ -223,6 +372,11 @@ function App() {
   }
 
   const handleDeleteProject = async (project: Project) => {
+    if (!session) {
+      setProjectActionError('You must be signed in to delete a project.')
+      return
+    }
+
     const confirmed = window.confirm(
       `Delete "${project.name}" and all of its tasks?`,
     )
@@ -272,6 +426,11 @@ function App() {
   const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
 
+    if (!session) {
+      setTaskActionError('You must be signed in to create a task.')
+      return
+    }
+
     if (!selectedProjectId) {
       return
     }
@@ -306,6 +465,11 @@ function App() {
   }
 
   const handleToggleTask = async (task: Task) => {
+    if (!session) {
+      setTaskActionError('You must be signed in to update a task.')
+      return
+    }
+
     if (!selectedProjectId) {
       return
     }
@@ -333,6 +497,11 @@ function App() {
   }
 
   const handleDeleteTask = async (taskId: string) => {
+    if (!session) {
+      setTaskActionError('You must be signed in to delete a task.')
+      return
+    }
+
     if (!selectedProjectId) {
       return
     }
@@ -356,15 +525,106 @@ function App() {
     }
   }
 
+  if (!session) {
+    return (
+      <main className="app-shell">
+        <section className="panel auth-panel">
+          <p className="eyebrow">Supabase Auth</p>
+          <h1>Personal Ops Center</h1>
+          <p className="intro">
+            Sign in with your manually created Supabase user to access only your
+            own projects and tasks.
+          </p>
+
+          {authMessages.length > 0 ? (
+            <div className="message-stack">
+              {authMessages.map((message, index) => (
+                <p
+                  key={`${index}-${message}`}
+                  className="message-card error-message"
+                >
+                  {message}
+                </p>
+              ))}
+            </div>
+          ) : null}
+
+          {sessionLoading ? (
+            <p className="message-card info-message">Checking session...</p>
+          ) : null}
+
+          <form
+            className="auth-form"
+            onSubmit={(event) => {
+              event.preventDefault()
+              void handleSignIn()
+            }}
+          >
+            <label className="field-group">
+              <span className="field-label">Email</span>
+              <input
+                type="email"
+                value={authEmail}
+                onChange={(event) => setAuthEmail(event.target.value)}
+                placeholder="you@example.com"
+                autoComplete="email"
+                disabled={Boolean(configError) || authLoading || sessionLoading}
+              />
+            </label>
+
+            <label className="field-group">
+              <span className="field-label">Password</span>
+              <input
+                type="password"
+                value={authPassword}
+                onChange={(event) => setAuthPassword(event.target.value)}
+                placeholder="At least 6 characters"
+                autoComplete="current-password"
+                disabled={Boolean(configError) || authLoading || sessionLoading}
+              />
+            </label>
+
+            <div className="button-row auth-button-row">
+              <button
+                className="primary-button"
+                type="submit"
+                disabled={Boolean(configError) || authLoading || sessionLoading}
+              >
+                {authLoading ? 'Signing In...' : 'Sign In'}
+              </button>
+            </div>
+          </form>
+        </section>
+      </main>
+    )
+  }
+
   return (
     <main className="app-shell">
       <section className="panel app-panel">
-        <h1>Personal Ops Center</h1>
-        <p className="intro">
-          {selectedProject
-            ? 'Track the tasks for one project at a time.'
-            : 'Manage your project categories and keep each task list tidy.'}
-        </p>
+        <div className="app-topbar">
+          <div>
+            <h1>Personal Ops Center</h1>
+            <p className="intro">
+              {selectedProject
+                ? 'Track the tasks for one project at a time.'
+                : 'Manage your project categories and keep each task list tidy.'}
+            </p>
+          </div>
+          <div className="topbar-actions">
+            <p className="session-note">
+              Signed in as <strong>{session.user.email ?? 'your account'}</strong>
+            </p>
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={() => void handleSignOut()}
+              disabled={authLoading}
+            >
+              {authLoading ? 'Signing Out...' : 'Sign Out'}
+            </button>
+          </div>
+        </div>
 
         {selectedProject ? (
           <section className="screen-section">
@@ -384,8 +644,11 @@ function App() {
 
             {taskMessages.length > 0 ? (
               <div className="message-stack">
-                {taskMessages.map((message) => (
-                  <p key={message} className="message-card error-message">
+                {taskMessages.map((message, index) => (
+                  <p
+                    key={`${index}-${message}`}
+                    className="message-card error-message"
+                  >
                     {message}
                   </p>
                 ))}
@@ -511,8 +774,11 @@ function App() {
 
             {homeMessages.length > 0 ? (
               <div className="message-stack">
-                {homeMessages.map((message) => (
-                  <p key={message} className="message-card error-message">
+                {homeMessages.map((message, index) => (
+                  <p
+                    key={`${index}-${message}`}
+                    className="message-card error-message"
+                  >
                     {message}
                   </p>
                 ))}

@@ -50,9 +50,26 @@ select {
   box-shadow: 0 18px 45px rgba(33, 51, 84, 0.12);
 }
 
-.app-panel {
+.app-panel,
+.auth-panel,
+.screen-section,
+.inline-form,
+.field-group,
+.project-edit-block,
+.list-section,
+.auth-form,
+.message-stack {
   display: grid;
+  gap: 0.75rem;
+}
+
+.app-panel {
   gap: 1.25rem;
+}
+
+.auth-panel {
+  max-width: 30rem;
+  align-self: center;
 }
 
 .eyebrow {
@@ -80,12 +97,9 @@ h3 {
   color: #45556f;
 }
 
-.screen-section {
-  display: grid;
-  gap: 1rem;
-}
-
-.section-header {
+.app-topbar,
+.section-header,
+.section-title-row {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -93,40 +107,21 @@ h3 {
   flex-wrap: wrap;
 }
 
-.home-header {
-  align-items: end;
+.topbar-actions {
+  display: grid;
+  gap: 0.75rem;
+  justify-items: start;
 }
 
+.session-note,
 .section-note {
+  margin: 0;
   color: #5d6c84;
   font-size: 0.92rem;
 }
 
-.message-stack {
-  display: grid;
-  gap: 0.75rem;
-}
-
-.message-card {
-  margin: 0;
-  padding: 0.95rem 1rem;
-  border-radius: 0.9rem;
-  border: 1px solid #d8e2ef;
-  background: #f8fbff;
-}
-
-.error-message {
-  border-color: #f1c7c7;
-  background: #fff4f4;
-  color: #7b2222;
-}
-
-.inline-form,
-.field-group,
-.project-edit-block,
-.list-section {
-  display: grid;
-  gap: 0.75rem;
+.home-header {
+  align-items: end;
 }
 
 .field-group {
@@ -224,6 +219,26 @@ input:focus {
   flex: 1 1 8.5rem;
 }
 
+.message-card {
+  margin: 0;
+  padding: 0.95rem 1rem;
+  border-radius: 0.9rem;
+  border: 1px solid #d8e2ef;
+  background: #f8fbff;
+}
+
+.error-message {
+  border-color: #f1c7c7;
+  background: #fff4f4;
+  color: #7b2222;
+}
+
+.info-message {
+  border-color: #d8e2ef;
+  background: #f8fbff;
+  color: #355074;
+}
+
 .project-grid,
 .task-list {
   margin: 0;
@@ -281,14 +296,6 @@ input:focus {
   border: 1px solid #d8e2ef;
   border-radius: 1rem;
   background: #f9fbfe;
-}
-
-.section-title-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  flex-wrap: wrap;
 }
 
 .task-list {
@@ -392,6 +399,10 @@ input:focus {
 
   .project-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .topbar-actions {
+    justify-items: end;
   }
 }
 

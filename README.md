@@ -1,6 +1,6 @@
 # Personal Ops Center
 
-Small React + Vite + TypeScript task manager connected to Supabase. This version keeps the app intentionally simple: project cards on the home screen and a task list inside each project.
+Small React + Vite + TypeScript task manager connected to Supabase. This version uses Supabase Auth with a sign-in-only flow and Row Level Security so only the signed-in user can access their own projects and tasks.
 
 ## Stack
 
@@ -12,6 +12,8 @@ Small React + Vite + TypeScript task manager connected to Supabase. This version
 
 ## Features
 
+- Email/password sign-in screen
+- Sign-out button in the main app
 - Project cards on the home screen
 - Create, rename, and delete project categories
 - Open a project to see its task list
@@ -45,9 +47,9 @@ Small React + Vite + TypeScript task manager connected to Supabase. This version
 5. Open the local Vite URL shown in the terminal, usually `http://localhost:5173`.
 6. If you change `.env.local`, stop and restart the dev server so Vite picks up the new values.
 
-## Supabase setup SQL
+## Supabase SQL migration
 
-Paste this into the Supabase SQL editor to create or update the schema and temporary test policies:
+Paste this into the Supabase SQL editor. It clears the old test data, adds project ownership, removes anonymous access, and creates authenticated-only RLS policies.
 
 ```sql
 create extension if not exists pgcrypto;
@@ -66,6 +68,15 @@ create table if not exists public.tasks (
   created_at timestamptz default now()
 );
 
+delete from public.tasks;
+delete from public.projects;
+
+alter table public.projects
+add column if not exists user_id uuid references auth.users(id) on delete cascade;
+
+alter table public.projects
+alter column user_id set not null;
+
 alter table public.projects enable row level security;
 alter table public.tasks enable row level security;
 
@@ -79,92 +90,160 @@ drop policy if exists "Allow anon insert tasks" on public.tasks;
 drop policy if exists "Allow anon update tasks" on public.tasks;
 drop policy if exists "Allow anon delete tasks" on public.tasks;
 
-create policy "Allow anon select projects"
+drop policy if exists "Users can view their own projects" on public.projects;
+drop policy if exists "Users can create their own projects" on public.projects;
+drop policy if exists "Users can update their own projects" on public.projects;
+drop policy if exists "Users can delete their own projects" on public.projects;
+drop policy if exists "Users can view tasks in their own projects" on public.tasks;
+drop policy if exists "Users can create tasks in their own projects" on public.tasks;
+drop policy if exists "Users can update tasks in their own projects" on public.tasks;
+drop policy if exists "Users can delete tasks in their own projects" on public.tasks;
+
+create policy "Users can view their own projects"
 on public.projects
 for select
-to anon
-using (true);
+to authenticated
+using (user_id = auth.uid());
 
-create policy "Allow anon insert projects"
+create policy "Users can create their own projects"
 on public.projects
 for insert
-to anon
-with check (true);
+to authenticated
+with check (user_id = auth.uid());
 
-create policy "Allow anon update projects"
+create policy "Users can update their own projects"
 on public.projects
 for update
-to anon
-using (true)
-with check (true);
+to authenticated
+using (user_id = auth.uid())
+with check (user_id = auth.uid());
 
-create policy "Allow anon delete projects"
+create policy "Users can delete their own projects"
 on public.projects
 for delete
-to anon
-using (true);
+to authenticated
+using (user_id = auth.uid());
 
-create policy "Allow anon select tasks"
+create policy "Users can view tasks in their own projects"
 on public.tasks
 for select
-to anon
-using (true);
+to authenticated
+using (
+  exists (
+    select 1
+    from public.projects
+    where projects.id = tasks.project_id
+      and projects.user_id = auth.uid()
+  )
+);
 
-create policy "Allow anon insert tasks"
+create policy "Users can create tasks in their own projects"
 on public.tasks
 for insert
-to anon
-with check (true);
+to authenticated
+with check (
+  exists (
+    select 1
+    from public.projects
+    where projects.id = tasks.project_id
+      and projects.user_id = auth.uid()
+  )
+);
 
-create policy "Allow anon update tasks"
+create policy "Users can update tasks in their own projects"
 on public.tasks
 for update
-to anon
-using (true)
-with check (true);
-
-create policy "Allow anon delete tasks"
-on public.tasks
-for delete
-to anon
-using (true);
-```
-
-Optional sample seed data:
-
-```sql
-with inserted_project as (
-  insert into public.projects (name)
-  values ('Apartment')
-  returning id
+to authenticated
+using (
+  exists (
+    select 1
+    from public.projects
+    where projects.id = tasks.project_id
+      and projects.user_id = auth.uid()
+  )
 )
-insert into public.tasks (project_id, text, completed)
-select id, 'Replace kitchen light bulb', false from inserted_project
-union all
-select id, 'Call plumber', true from inserted_project;
+with check (
+  exists (
+    select 1
+    from public.projects
+    where projects.id = tasks.project_id
+      and projects.user_id = auth.uid()
+  )
+);
+
+create policy "Users can delete tasks in their own projects"
+on public.tasks
+for delete
+to authenticated
+using (
+  exists (
+    select 1
+    from public.projects
+    where projects.id = tasks.project_id
+      and projects.user_id = auth.uid()
+  )
+);
 ```
 
-## Temporary security warning
+## Manually create your user in Supabase
 
-The current row level security policies allow public anonymous read/write access for local testing.
+This app does not expose public sign-up.
 
-- Do not use this setup for real private task data yet.
-- Before real use, add authentication and replace these anonymous policies with user-scoped rules.
+1. Open your Supabase project dashboard.
+2. Go to `Authentication`.
+3. Open `Users`.
+4. Click `Add user`.
+5. Enter your email address and password.
+6. Create a confirmed user so the account can sign in immediately.
 
-## What you should see locally
+If your dashboard shows email sign-up controls, keep public self-service sign-up disabled for this app.
+
+## Why the anon key is still okay
+
+The frontend still uses `VITE_SUPABASE_ANON_KEY`, which is normal for Supabase client apps.
+
+- The anon key is not a secret server key.
+- Security now comes from authentication plus Row Level Security.
+- Signed-out users should not be able to read or write your project data because the RLS policies block them.
+
+## What to test locally
+
+1. Run the SQL migration above.
+2. Create your user manually in Supabase.
+3. Start the app with `npm run dev`.
+4. Confirm the signed-out screen only shows:
+   - email field
+   - password field
+   - `Sign In` button
+5. Try a wrong password and confirm you get a clear error.
+6. Sign in with the correct email/password and confirm:
+   - the project screen appears
+   - you can create a project
+   - you can open the project
+   - you can create, complete, uncomplete, and delete tasks
+7. Refresh the page and confirm the session persists.
+8. Sign out and confirm the app returns to the sign-in screen.
+
+Optional stronger RLS check:
+
+1. Manually create a second Supabase user.
+2. Sign in as user A and create some data.
+3. Sign out, then sign in as user B.
+4. Confirm user B cannot see user A's projects or tasks.
+
+## What you should see
 
 If everything is wired correctly:
 
-- The home screen shows the `Personal Ops Center` title and a form to add projects
-- Existing projects appear as big cards that are easy to tap on a phone
-- Each card has `Edit` and `Delete` buttons
-- Tapping a card opens that project's task screen
-- The task screen shows active tasks first and a collapsible `Completed` section below
+- Signed out: a simple sign-in card
+- Signed in on desktop: a centered app panel with a signed-in header, project cards, and task lists
+- Signed in on phone: the same flow in a single-column, tap-friendly layout
 
 If something is wrong:
 
 - Missing `.env.local` values show a readable configuration error
-- Missing tables or missing policies show the Supabase error returned by the API
+- Wrong password shows an auth error from Supabase
+- Missing `user_id` column or missing RLS policy shows a database error in the UI
 
 ## Deploying to Vercel
 
@@ -180,12 +259,35 @@ If something is wrong:
 
 5. Add those variables for at least `Production` and `Preview`.
 6. Click `Deploy`.
-7. If you add or change environment variables later, redeploy from the Vercel dashboard so the new values are used.
 
 ## Redeploying on Vercel
 
 - Push a new commit to the connected branch to trigger another deployment
-- Or open the project in Vercel and use the redeploy action from the latest deployment
+- Or open the project in Vercel and redeploy the latest deployment after changing environment variables
+
+## What to test on Vercel
+
+1. Open the deployed app signed out and confirm the sign-in screen appears.
+2. Sign in with your manually created user.
+3. Create a project and a few tasks.
+4. Refresh the deployed app and confirm your session and data still work.
+5. Sign out and confirm the app returns to the sign-in screen.
+
+## Most likely errors and how to debug them
+
+- `Invalid login credentials`
+  - Check the email and password for the manually created user.
+- `Email not confirmed`
+  - Make sure the dashboard-created user is confirmed or created in a way that allows immediate sign-in.
+- `Missing Supabase environment variables`
+  - Check `.env.local` locally or Vercel environment variables in production.
+- `column "user_id" does not exist`
+  - The SQL migration did not run successfully.
+- `new row violates row-level security policy`
+  - Confirm you are signed in and that the SQL policies were pasted exactly.
+- Empty project list after sign-in
+  - This can be normal if you have not created any projects yet.
+  - If not expected, verify you are signed into the same Supabase project you migrated.
 
 ## Useful commands
 
