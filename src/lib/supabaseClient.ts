@@ -6,6 +6,14 @@ export type Project = {
   created_at: string | null
 }
 
+export type Task = {
+  id: string
+  project_id: string
+  text: string
+  completed: boolean
+  created_at: string | null
+}
+
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL?.trim()
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY?.trim()
 
@@ -23,7 +31,7 @@ export function getSupabaseConfigError() {
 
   return `Missing Supabase environment variables: ${missingVariables.join(
     ', ',
-  )}. Create a .env file in the project root and add the missing values.`
+  )}. Create a .env.local file in the project root and add the missing values.`
 }
 
 export function getSupabaseClient() {
