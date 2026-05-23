@@ -24,6 +24,7 @@ export type Project = {
   name: string
   card_color: ProjectCardColor | null
   card_icon: ProjectCardIcon | null
+  sort_order: number | null
   created_at: string | null
 }
 
@@ -34,6 +35,7 @@ export type Task = {
   completed: boolean
   is_daily: boolean
   daily_added_at: string | null
+  sort_order: number | null
   created_at: string | null
 }
 

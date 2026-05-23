@@ -58,8 +58,50 @@ type SwipeState = {
   y: number
 }
 
+type TaskReorderGroup = 'daily' | 'active' | 'project-daily' | 'completed'
+
+type TaskDragState = {
+  id: string
+  group: TaskReorderGroup
+}
+
 const SWIPE_THRESHOLD = 72
 const SWIPE_IGNORE_VERTICAL = 16
+
+function moveItem<T extends { id: string }>(
+  items: T[],
+  draggedId: string,
+  targetId: string,
+) {
+  const fromIndex = items.findIndex((item) => item.id === draggedId)
+  const toIndex = items.findIndex((item) => item.id === targetId)
+
+  if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) {
+    return items
+  }
+
+  const next = [...items]
+  const [draggedItem] = next.splice(fromIndex, 1)
+  next.splice(toIndex, 0, draggedItem)
+  return next
+}
+
+function applySortOrder<T extends { sort_order: number | null }>(items: T[]) {
+  return items.map((item, index) => ({ ...item, sort_order: index }))
+}
+
+function getTaskReorderItems(tasks: Task[], group: TaskReorderGroup) {
+  switch (group) {
+    case 'active':
+      return tasks.filter((task) => !task.completed && !task.is_daily)
+    case 'project-daily':
+      return tasks.filter((task) => !task.completed && task.is_daily)
+    case 'completed':
+      return tasks.filter((task) => task.completed)
+    case 'daily':
+      return tasks
+  }
+}
 
 const PROJECT_COLOR_OPTIONS: Array<{
   value: ProjectCardColor | null
@@ -253,30 +295,56 @@ function ProjectIconSvg({
   }
 }
 
+function CardStackIcon() {
+  return (
+    <span className="card-stack-icon" aria-hidden="true">
+      <span />
+      <span />
+      <span />
+    </span>
+  )
+}
+
 function TaskRow({
   task,
   projectName,
   selected,
   selectable,
   swipeToDaily,
+  reorderGroup,
+  isDragging,
   disabled,
   onSelectChange,
   onComplete,
   onSendToDaily,
   onRemoveFromDaily,
   onDelete,
+  onReorderDragStart,
+  onReorderDragEnter,
+  onReorderDragEnd,
+  onReorderPointerMove,
 }: {
   task: Task
   projectName?: string
   selected: boolean
   selectable: boolean
   swipeToDaily: boolean
+  reorderGroup: TaskReorderGroup
+  isDragging: boolean
   disabled: boolean
   onSelectChange: (taskId: string, selected: boolean) => void
   onComplete: (task: Task) => void
   onSendToDaily: (task: Task) => void
   onRemoveFromDaily: (task: Task) => void
   onDelete: (taskId: string) => void
+  onReorderDragStart: (taskId: string, group: TaskReorderGroup) => void
+  onReorderDragEnter: (taskId: string, group: TaskReorderGroup) => void
+  onReorderDragEnd: () => void
+  onReorderPointerMove: (
+    group: TaskReorderGroup,
+    clientX: number,
+    clientY: number,
+  ) => void
 }) {
   const swipeStart = useRef<SwipeState | null>(null)
   const [swipeOffset, setSwipeOffset] = useState(0)
@@ -295,12 +363,22 @@ function TaskRow({
     task.completed ? 'completed-task-item' : '',
     task.is_daily ? 'daily-task-item' : '',
     canSwipe ? 'swipeable-task' : '',
+    isDragging ? 'is-dragging' : '',
   ]
     .filter(Boolean)
     .join(' ')
 
   return (
-    <li className={rowClassName}>
+    <li
+      className={rowClassName}
+      data-task-id={task.id}
+      data-task-group={reorderGroup}
+      onDragEnter={(event) => {
+        event.preventDefault()
+        onReorderDragEnter(task.id, reorderGroup)
+      }}
+      onDragOver={(event) => event.preventDefault()}
+    >
       {canSwipeToDelete ? (
         <span className="swipe-action swipe-action-delete">Delete</span>
       ) : null}
@@ -361,6 +439,38 @@ function TaskRow({
           resetSwipe()
         }}
       >
+        <button
+          className="drag-handle task-drag-handle"
+          type="button"
+          aria-label={`Reorder ${task.text}`}
+          title="Reorder"
+          onPointerDown={(event) => {
+            if (disabled || !event.isPrimary) {
+              return
+            }
+
+            event.currentTarget.setPointerCapture(event.pointerId)
+            onReorderDragStart(task.id, reorderGroup)
+          }}
+          onPointerMove={(event) => {
+            if (!event.currentTarget.hasPointerCapture(event.pointerId)) {
+              return
+            }
+
+            onReorderPointerMove(reorderGroup, event.clientX, event.clientY)
+          }}
+          onPointerUp={(event) => {
+            if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+              event.currentTarget.releasePointerCapture(event.pointerId)
+            }
+
+            onReorderDragEnd()
+          }}
+          onPointerCancel={onReorderDragEnd}
+          disabled={disabled}
+        >
+          <CardStackIcon />
+        </button>
         {selectable ? (
           <input
             className="task-select"
@@ -415,6 +525,13 @@ function App() {
   const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(
     () => new Set(),
   )
+  const projectsRef = useRef<Project[]>([])
+  const tasksRef = useRef<Task[]>([])
+  const dailyTasksRef = useRef<DailyTask[]>([])
+  const projectDragChangedRef = useRef(false)
+  const taskDragChangedRef = useRef(false)
+  const draggingProjectIdRef = useRef<string | null>(null)
+  const draggingTaskRef = useRef<TaskDragState | null>(null)
   const [newProjectName, setNewProjectName] = useState('')
   const [editingProjectId, setEditingProjectId] = useState<string | null>(null)
   const [editingProjectName, setEditingProjectName] = useState('')
@@ -436,6 +553,10 @@ function App() {
     null,
   )
   const [taskActionError, setTaskActionError] = useState<string | null>(null)
+  const [draggingProjectId, setDraggingProjectId] = useState<string | null>(
+    null,
+  )
+  const [draggingTask, setDraggingTask] = useState<TaskDragState | null>(null)
 
   const configError = getSupabaseConfigError()
   const selectedProject = selectedProjectId
@@ -449,7 +570,7 @@ function App() {
   const selectableTasks =
     appView === 'daily' && !selectedProject
       ? dailyTasks
-      : tasks.filter((task) => !task.completed)
+      : tasks
   const selectedTasks = selectableTasks.filter((task) =>
     selectedTaskIds.has(task.id),
   )
@@ -467,6 +588,18 @@ function App() {
   const authMessages = [configError, authError].filter(Boolean) as string[]
   const isBusy = taskSubmitting || Boolean(configError)
 
+  useEffect(() => {
+    projectsRef.current = projects
+  }, [projects])
+
+  useEffect(() => {
+    tasksRef.current = tasks
+  }, [tasks])
+
+  useEffect(() => {
+    dailyTasksRef.current = dailyTasks
+  }, [dailyTasks])
+
   function clearAppState() {
     setAppView('projects')
     setProjects([])
@@ -481,6 +614,10 @@ function App() {
     setEditingProjectIcon(null)
     setNewTaskText('')
     setShowCompleted(false)
+    setDraggingProjectId(null)
+    setDraggingTask(null)
+    draggingProjectIdRef.current = null
+    draggingTaskRef.current = null
     setProjectsError(null)
     setTasksError(null)
     setDailyTasksError(null)
@@ -502,6 +639,7 @@ function App() {
       const { data, error } = await supabase
         .from('projects')
         .select('*')
+        .order('sort_order', { ascending: true, nullsFirst: false })
         .order('created_at', { ascending: false })
 
       if (error) {
@@ -526,6 +664,7 @@ function App() {
         .from('tasks')
         .select('*')
         .eq('project_id', projectId)
+        .order('sort_order', { ascending: true, nullsFirst: false })
         .order('created_at', { ascending: true })
 
       if (error) {
@@ -551,6 +690,7 @@ function App() {
         .select('*, projects(name)')
         .eq('is_daily', true)
         .eq('completed', false)
+        .order('sort_order', { ascending: true, nullsFirst: false })
         .order('daily_added_at', { ascending: false, nullsFirst: false })
         .order('created_at', { ascending: true })
 
@@ -589,6 +729,214 @@ function App() {
 
   function getVisibleProjectRefreshId(task: Task) {
     return selectedProjectId === task.project_id ? task.project_id : null
+  }
+
+  async function persistProjectOrder(orderedProjects: Project[]) {
+    if (!session) {
+      setProjectActionError('You must be signed in to reorder projects.')
+      await fetchProjects()
+      return
+    }
+
+    setProjectSubmitting(true)
+    setProjectActionError(null)
+
+    try {
+      const supabase = getSupabaseClient()
+      const updates = await Promise.all(
+        orderedProjects.map((project, index) =>
+          supabase
+            .from('projects')
+            .update({ sort_order: index })
+            .eq('id', project.id),
+        ),
+      )
+      const failedUpdate = updates.find((update) => update.error)
+
+      if (failedUpdate?.error) {
+        throw failedUpdate.error
+      }
+
+      await fetchProjects()
+    } catch (error) {
+      setProjectActionError(getErrorMessage(error))
+      await fetchProjects()
+    } finally {
+      setProjectSubmitting(false)
+    }
+  }
+
+  async function persistTaskOrder(orderedTasks: Task[]) {
+    if (!session) {
+      setTaskActionError('You must be signed in to reorder tasks.')
+      await refreshTaskViews()
+      return
+    }
+
+    setTaskSubmitting(true)
+    setTaskActionError(null)
+
+    try {
+      const supabase = getSupabaseClient()
+      const updates = await Promise.all(
+        orderedTasks.map((task, index) =>
+          supabase.from('tasks').update({ sort_order: index }).eq('id', task.id),
+        ),
+      )
+      const failedUpdate = updates.find((update) => update.error)
+
+      if (failedUpdate?.error) {
+        throw failedUpdate.error
+      }
+
+      await refreshTaskViews()
+    } catch (error) {
+      setTaskActionError(getErrorMessage(error))
+      await refreshTaskViews()
+    } finally {
+      setTaskSubmitting(false)
+    }
+  }
+
+  const handleProjectDragStart = (projectId: string) => {
+    projectDragChangedRef.current = false
+    draggingProjectIdRef.current = projectId
+    setDraggingProjectId(projectId)
+    setProjectActionError(null)
+  }
+
+  const handleProjectDragEnter = (targetProjectId: string) => {
+    const activeProjectId = draggingProjectIdRef.current
+
+    if (!activeProjectId || activeProjectId === targetProjectId) {
+      return
+    }
+
+    setProjects((current) => {
+      const next = applySortOrder(
+        moveItem(current, activeProjectId, targetProjectId),
+      )
+      projectsRef.current = next
+      return next
+    })
+    projectDragChangedRef.current = true
+  }
+
+  const handleProjectDragEnd = () => {
+    if (!draggingProjectIdRef.current) {
+      return
+    }
+
+    const orderedProjects = projectsRef.current
+    draggingProjectIdRef.current = null
+    setDraggingProjectId(null)
+
+    if (projectDragChangedRef.current) {
+      void persistProjectOrder(orderedProjects)
+    }
+  }
+
+  const handleProjectPointerMove = (clientX: number, clientY: number) => {
+    if (!draggingProjectIdRef.current) {
+      return
+    }
+
+    const targetElement = document
+      .elementFromPoint(clientX, clientY)
+      ?.closest<HTMLElement>('[data-project-id]')
+    const targetProjectId = targetElement?.dataset.projectId
+
+    if (targetProjectId) {
+      handleProjectDragEnter(targetProjectId)
+    }
+  }
+
+  const handleTaskDragStart = (taskId: string, group: TaskReorderGroup) => {
+    taskDragChangedRef.current = false
+    const nextDraggingTask = { id: taskId, group }
+    draggingTaskRef.current = nextDraggingTask
+    setDraggingTask(nextDraggingTask)
+    setTaskActionError(null)
+  }
+
+  const handleTaskDragEnter = (
+    targetTaskId: string,
+    group: TaskReorderGroup,
+  ) => {
+    if (
+      !draggingTaskRef.current ||
+      draggingTaskRef.current.group !== group ||
+      draggingTaskRef.current.id === targetTaskId
+    ) {
+      return
+    }
+
+    const activeTaskId = draggingTaskRef.current.id
+
+    if (group === 'daily') {
+      setDailyTasks((current) => {
+        const next = applySortOrder(
+          moveItem(current, activeTaskId, targetTaskId),
+        )
+        dailyTasksRef.current = next
+        return next
+      })
+      taskDragChangedRef.current = true
+      return
+    }
+
+    setTasks((current) => {
+      const groupItems = getTaskReorderItems(current, group)
+      const reorderedItems = applySortOrder(
+        moveItem(groupItems, activeTaskId, targetTaskId),
+      )
+      const reorderedById = new Map(
+        reorderedItems.map((task) => [task.id, task]),
+      )
+      const next = current.map((task) => reorderedById.get(task.id) ?? task)
+      tasksRef.current = next
+      return next
+    })
+    taskDragChangedRef.current = true
+  }
+
+  const handleTaskDragEnd = () => {
+    const activeDraggingTask = draggingTaskRef.current
+
+    if (!activeDraggingTask) {
+      return
+    }
+
+    const orderedTasks =
+      activeDraggingTask.group === 'daily'
+        ? dailyTasksRef.current
+        : getTaskReorderItems(tasksRef.current, activeDraggingTask.group)
+
+    draggingTaskRef.current = null
+    setDraggingTask(null)
+
+    if (taskDragChangedRef.current) {
+      void persistTaskOrder(orderedTasks)
+    }
+  }
+
+  const handleTaskPointerMove = (
+    group: TaskReorderGroup,
+    clientX: number,
+    clientY: number,
+  ) => {
+    if (!draggingTaskRef.current || draggingTaskRef.current.group !== group) {
+      return
+    }
+
+    const targetElement = document
+      .elementFromPoint(clientX, clientY)
+      ?.closest<HTMLElement>(`[data-task-group="${group}"]`)
+    const targetTaskId = targetElement?.dataset.taskId
+
+    if (targetTaskId) {
+      handleTaskDragEnter(targetTaskId, group)
+    }
   }
 
   useEffect(() => {
@@ -773,6 +1121,7 @@ function App() {
       const { error } = await supabase.from('projects').insert({
         name: trimmedName,
         user_id: session.user.id,
+        sort_order: projects.length,
       })
 
       if (error) {
@@ -940,6 +1289,7 @@ function App() {
       const { error } = await supabase.from('tasks').insert({
         project_id: selectedProjectId,
         text: trimmedText,
+        sort_order: tasks.length,
       })
 
       if (error) {
@@ -1278,6 +1628,7 @@ function App() {
       projectName?: string
       swipeToDaily?: boolean
       selectable?: boolean
+      reorderGroup?: TaskReorderGroup
     } = {},
   ) => (
     <TaskRow
@@ -1287,12 +1638,18 @@ function App() {
       selected={selectedTaskIds.has(task.id)}
       selectable={options.selectable ?? !task.completed}
       swipeToDaily={options.swipeToDaily ?? false}
+      reorderGroup={options.reorderGroup ?? 'active'}
+      isDragging={draggingTask?.id === task.id}
       disabled={isBusy}
       onSelectChange={handleSelectTask}
       onComplete={(nextTask) => void handleCompleteTask(nextTask)}
       onSendToDaily={(nextTask) => void handleSendToDaily(nextTask)}
       onRemoveFromDaily={(nextTask) => void handleRemoveFromDaily(nextTask)}
       onDelete={(taskId) => void handleDeleteTask(taskId)}
+      onReorderDragStart={handleTaskDragStart}
+      onReorderDragEnter={handleTaskDragEnter}
+      onReorderDragEnd={handleTaskDragEnd}
+      onReorderPointerMove={handleTaskPointerMove}
     />
   )
 
@@ -1452,6 +1809,7 @@ function App() {
                   {dailyTasks.map((task) =>
                     renderTaskRow(task, {
                       projectName: task.project_name,
+                      reorderGroup: 'daily',
                     }),
                   )}
                 </ul>
@@ -1526,7 +1884,10 @@ function App() {
               {activeTasks.length > 0 ? (
                 <ul className="task-list">
                   {activeTasks.map((task) =>
-                    renderTaskRow(task, { swipeToDaily: true }),
+                    renderTaskRow(task, {
+                      swipeToDaily: true,
+                      reorderGroup: 'active',
+                    }),
                   )}
                 </ul>
               ) : (
@@ -1548,7 +1909,9 @@ function App() {
 
               {projectDailyTasks.length > 0 ? (
                 <ul className="task-list">
-                  {projectDailyTasks.map((task) => renderTaskRow(task))}
+                  {projectDailyTasks.map((task) =>
+                    renderTaskRow(task, { reorderGroup: 'project-daily' }),
+                  )}
                 </ul>
               ) : (
                 <p className="empty-state">No tasks from this project are in Daily.</p>
@@ -1570,7 +1933,10 @@ function App() {
                 completedTasks.length > 0 ? (
                   <ul className="task-list completed-list">
                     {completedTasks.map((task) =>
-                      renderTaskRow(task, { selectable: true }),
+                      renderTaskRow(task, {
+                        selectable: true,
+                        reorderGroup: 'completed',
+                      }),
                     )}
                   </ul>
                 ) : (
@@ -1642,8 +2008,16 @@ function App() {
                   return (
                     <li
                       key={project.id}
-                      className={projectCardClassName}
+                      className={`${projectCardClassName}${
+                        draggingProjectId === project.id ? ' is-dragging' : ''
+                      }`}
                       style={projectCardStyle}
+                      data-project-id={project.id}
+                      onDragEnter={(event) => {
+                        event.preventDefault()
+                        handleProjectDragEnter(project.id)
+                      }}
+                      onDragOver={(event) => event.preventDefault()}
                     >
                       {isEditing ? (
                         <form
@@ -1761,6 +2135,53 @@ function App() {
                             />
                           ) : null}
                           <div className="project-card-header">
+                            <button
+                              className="drag-handle project-drag-handle"
+                              type="button"
+                              aria-label={`Reorder ${project.name}`}
+                              title="Reorder"
+                              onPointerDown={(event) => {
+                                if (projectSubmitting || !event.isPrimary) {
+                                  return
+                                }
+
+                                event.currentTarget.setPointerCapture(
+                                  event.pointerId,
+                                )
+                                handleProjectDragStart(project.id)
+                              }}
+                              onPointerMove={(event) => {
+                                if (
+                                  !event.currentTarget.hasPointerCapture(
+                                    event.pointerId,
+                                  )
+                                ) {
+                                  return
+                                }
+
+                                handleProjectPointerMove(
+                                  event.clientX,
+                                  event.clientY,
+                                )
+                              }}
+                              onPointerUp={(event) => {
+                                if (
+                                  event.currentTarget.hasPointerCapture(
+                                    event.pointerId,
+                                  )
+                                ) {
+                                  event.currentTarget.releasePointerCapture(
+                                    event.pointerId,
+                                  )
+                                }
+
+                                handleProjectDragEnd()
+                              }}
+                              onPointerCancel={handleProjectDragEnd}
+                              disabled={projectSubmitting}
+                            >
+                              <CardStackIcon />
+                            </button>
                             <button
                               className="project-open-button"
                               type="button"

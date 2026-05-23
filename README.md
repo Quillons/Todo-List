@@ -15,9 +15,10 @@ Small React + Vite + TypeScript task manager connected to Supabase. This version
 - Email/password sign-in screen
 - Sign-out button in the main app
 - Project cards on the home screen
+- Drag projects into your preferred order
 - Create, rename, and delete project categories
 - Open a project to see its task list
-- Add tasks, select tasks for bulk actions, complete tasks, and delete tasks
+- Add tasks, select tasks for bulk actions, complete tasks, delete tasks, and drag tasks into your preferred order
 - Move tasks into a top-level Daily Tasks bucket
 - Swipe active tasks left on mobile to send them to Daily Tasks
 - Swipe tasks right on mobile to delete them
@@ -60,6 +61,7 @@ create extension if not exists pgcrypto;
 create table if not exists public.projects (
   id uuid primary key default gen_random_uuid(),
   name text not null,
+  sort_order integer,
   created_at timestamptz default now()
 );
 
@@ -70,6 +72,7 @@ create table if not exists public.tasks (
   completed boolean not null default false,
   is_daily boolean not null default false,
   daily_added_at timestamptz,
+  sort_order integer,
   created_at timestamptz default now()
 );
 
@@ -85,11 +88,47 @@ add column if not exists card_color text;
 alter table public.projects
 add column if not exists card_icon text;
 
+alter table public.projects
+add column if not exists sort_order integer;
+
 alter table public.tasks
 add column if not exists is_daily boolean not null default false;
 
 alter table public.tasks
 add column if not exists daily_added_at timestamptz;
+
+alter table public.tasks
+add column if not exists sort_order integer;
+
+with ordered_projects as (
+  select
+    id,
+    row_number() over (
+      partition by user_id
+      order by created_at desc nulls last, id
+    ) - 1 as next_sort_order
+  from public.projects
+)
+update public.projects
+set sort_order = ordered_projects.next_sort_order
+from ordered_projects
+where projects.id = ordered_projects.id
+  and projects.sort_order is null;
+
+with ordered_tasks as (
+  select
+    id,
+    row_number() over (
+      partition by project_id
+      order by created_at asc nulls last, id
+    ) - 1 as next_sort_order
+  from public.tasks
+)
+update public.tasks
+set sort_order = ordered_tasks.next_sort_order
+from ordered_tasks
+where tasks.id = ordered_tasks.id
+  and tasks.sort_order is null;
 
 do $$
 begin
@@ -230,6 +269,8 @@ using (
   )
 );
 ```
+
+If you already ran an earlier migration and want to keep your existing data, run just the `sort_order` parts from the block above: add `sort_order` to `projects` and `tasks`, then run the two `with ordered_... update ...` backfill statements.
 
 ## Manually create your user in Supabase
 

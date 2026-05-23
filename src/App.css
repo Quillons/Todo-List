@@ -344,9 +344,66 @@ input:focus {
 
 .project-card-header {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   gap: 0.55rem;
   align-items: start;
+}
+
+.drag-handle {
+  width: 2.65rem;
+  height: 2.65rem;
+  padding: 0;
+  border: 0;
+  border-radius: 0.8rem;
+  background: #edf3fb;
+  color: #1c345f;
+  cursor: grab;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  touch-action: none;
+  user-select: none;
+}
+
+.drag-handle:active {
+  cursor: grabbing;
+}
+
+.drag-handle:disabled {
+  cursor: wait;
+  opacity: 0.78;
+}
+
+.card-stack-icon {
+  position: relative;
+  width: 1.35rem;
+  height: 1.25rem;
+  display: block;
+}
+
+.card-stack-icon span {
+  position: absolute;
+  width: 0.95rem;
+  height: 0.58rem;
+  border: 2px solid currentColor;
+  border-radius: 0.22rem;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.card-stack-icon span:nth-child(1) {
+  top: 0;
+  left: 0.34rem;
+}
+
+.card-stack-icon span:nth-child(2) {
+  top: 0.34rem;
+  left: 0.17rem;
+}
+
+.card-stack-icon span:nth-child(3) {
+  top: 0.68rem;
+  left: 0;
 }
 
 .project-open-button {
@@ -385,12 +442,14 @@ input:focus {
 }
 
 .project-card.has-project-color .project-open-button,
-.project-card.has-project-color .project-menu-button {
+.project-card.has-project-color .project-menu-button,
+.project-card.has-project-color .drag-handle {
   background: rgba(255, 255, 255, 0.42);
 }
 
 .project-card.has-project-color .project-open-button:hover,
-.project-card.has-project-color .project-menu-button:hover {
+.project-card.has-project-color .project-menu-button:hover,
+.project-card.has-project-color .drag-handle:hover {
   background: rgba(255, 255, 255, 0.64);
 }
 
@@ -507,6 +566,11 @@ input:focus {
   overflow: hidden;
 }
 
+.project-card.is-dragging,
+.task-item.is-dragging {
+  opacity: 0.58;
+}
+
 .task-item-content {
   position: relative;
   z-index: 1;
@@ -519,6 +583,11 @@ input:focus {
   background: #ffffff;
   transition: transform 160ms ease;
   touch-action: pan-y;
+}
+
+.task-drag-handle {
+  width: 2.35rem;
+  height: 2.35rem;
 }
 
 .task-select {
@@ -695,8 +764,16 @@ input:focus {
 @media (max-width: 520px) {
   .task-item-content {
     display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-columns: auto auto minmax(0, 1fr);
     align-items: center;
+  }
+
+  .task-drag-handle + .task-text-button {
+    grid-column: 2 / -1;
+  }
+
+  .task-select + .task-text-button {
+    grid-column: 3;
   }
 
   .task-actions {
