@@ -116,7 +116,7 @@ const PROJECT_ICON_OPTIONS: Array<{
   { value: 'bicycle', label: 'Bicycle' },
   { value: 'lightbulb', label: 'Lightbulb' },
   { value: 'car', label: 'Car' },
-  { value: 'running', label: 'Running' },
+  { value: 'running', label: 'Person' },
   { value: 'euro', label: 'Euro' },
   { value: 'shopping', label: 'Shopping' },
 ]
@@ -198,11 +198,12 @@ function ProjectIconSvg({
     case 'running':
       return (
         <svg className={className} aria-hidden="true" viewBox="0 0 64 64">
-          <circle cx="39" cy="13" r="6" />
-          <path d="M35 22 24 32l10 8 7-12 8 7" />
-          <path d="M34 40 25 56" />
-          <path d="M34 40 48 54" />
-          <path d="M24 32 13 34" />
+          <circle cx="32" cy="12" r="6" />
+          <path d="M17 24h30" />
+          <path d="M32 24v18" />
+          <path d="M32 42h14" />
+          <path d="M46 42l2 15" />
+          <path d="M32 42 14 52" />
         </svg>
       )
     case 'euro':
@@ -245,9 +246,6 @@ function App() {
     useState<ProjectCardColor | null>(null)
   const [editingProjectIcon, setEditingProjectIcon] =
     useState<ProjectCardIcon | null>(null)
-  const [activeProjectMenuId, setActiveProjectMenuId] = useState<string | null>(
-    null,
-  )
   const [newTaskText, setNewTaskText] = useState('')
   const [showCompleted, setShowCompleted] = useState(false)
   const [projectsLoading, setProjectsLoading] = useState(false)
@@ -284,7 +282,6 @@ function App() {
     setEditingProjectName('')
     setEditingProjectColor(null)
     setEditingProjectIcon(null)
-    setActiveProjectMenuId(null)
     setNewTaskText('')
     setShowCompleted(false)
     setProjectsError(null)
@@ -540,7 +537,6 @@ function App() {
     setEditingProjectName(project.name)
     setEditingProjectColor(project.card_color ?? null)
     setEditingProjectIcon(project.card_icon ?? null)
-    setActiveProjectMenuId(null)
     setProjectActionError(null)
   }
 
@@ -549,7 +545,6 @@ function App() {
     setEditingProjectName('')
     setEditingProjectColor(null)
     setEditingProjectIcon(null)
-    setActiveProjectMenuId(null)
   }
 
   const handleSaveProjectEdit = async (projectId: string) => {
@@ -586,7 +581,6 @@ function App() {
       setEditingProjectName('')
       setEditingProjectColor(null)
       setEditingProjectIcon(null)
-      setActiveProjectMenuId(null)
       await fetchProjects()
     } catch (error) {
       setProjectActionError(getErrorMessage(error))
@@ -630,7 +624,6 @@ function App() {
         setEditingProjectIcon(null)
       }
 
-      setActiveProjectMenuId(null)
       await fetchProjects()
     } catch (error) {
       setProjectActionError(getErrorMessage(error))
@@ -641,7 +634,6 @@ function App() {
 
   const handleOpenProject = (projectId: string) => {
     setSelectedProjectId(projectId)
-    setActiveProjectMenuId(null)
     setTaskActionError(null)
     setTasksError(null)
     setShowCompleted(false)
@@ -1037,7 +1029,6 @@ function App() {
               <ul className="project-grid">
                 {projects.map((project) => {
                   const isEditing = editingProjectId === project.id
-                  const isMenuOpen = activeProjectMenuId === project.id
                   const projectCardStyle = getProjectCardStyle(
                     project.card_color ?? null,
                   )
@@ -1152,6 +1143,14 @@ function App() {
                             >
                               Cancel
                             </button>
+                            <button
+                              className="danger-button"
+                              type="button"
+                              onClick={() => void handleDeleteProject(project)}
+                              disabled={projectSubmitting}
+                            >
+                              Delete Project
+                            </button>
                           </div>
                         </form>
                       ) : (
@@ -1173,15 +1172,8 @@ function App() {
                             <button
                               className="project-menu-button"
                               type="button"
-                              aria-expanded={isMenuOpen}
                               aria-label={`Edit ${project.name}`}
-                              onClick={() =>
-                                setActiveProjectMenuId((currentProjectId) =>
-                                  currentProjectId === project.id
-                                    ? null
-                                    : project.id,
-                                )
-                              }
+                              onClick={() => handleStartProjectEdit(project)}
                               disabled={projectSubmitting}
                             >
                               <svg
@@ -1193,27 +1185,6 @@ function App() {
                               </svg>
                             </button>
                           </div>
-
-                          {isMenuOpen ? (
-                            <div className="project-action-menu">
-                              <button
-                                className="menu-action-button"
-                                type="button"
-                                onClick={() => handleStartProjectEdit(project)}
-                                disabled={projectSubmitting}
-                              >
-                                Edit Project
-                              </button>
-                              <button
-                                className="menu-action-button menu-danger-button"
-                                type="button"
-                                onClick={() => void handleDeleteProject(project)}
-                                disabled={projectSubmitting}
-                              >
-                                Delete Project
-                              </button>
-                            </div>
-                          ) : null}
                         </>
                       )}
                     </li>

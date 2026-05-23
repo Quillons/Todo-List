@@ -155,7 +155,6 @@ input:focus {
 .danger-button,
 .icon-button,
 .project-menu-button,
-.menu-action-button,
 .choice-button,
 .completed-toggle {
   border: 0;
@@ -174,7 +173,6 @@ input:focus {
 .danger-button:disabled,
 .icon-button:disabled,
 .project-menu-button:disabled,
-.menu-action-button:disabled,
 .choice-button:disabled {
   cursor: wait;
   opacity: 0.78;
@@ -221,7 +219,6 @@ input:focus {
 .danger-button:active,
 .icon-button:active,
 .project-menu-button:active,
-.menu-action-button:active,
 .choice-button:active,
 .completed-toggle:active {
   transform: translateY(1px);
@@ -355,8 +352,7 @@ input:focus {
   justify-content: center;
 }
 
-.project-menu-button:hover,
-.project-menu-button[aria-expanded='true'] {
+.project-menu-button:hover {
   background: #dfeaf8;
 }
 
@@ -366,8 +362,7 @@ input:focus {
 }
 
 .project-card.has-project-color .project-open-button:hover,
-.project-card.has-project-color .project-menu-button:hover,
-.project-card.has-project-color .project-menu-button[aria-expanded='true'] {
+.project-card.has-project-color .project-menu-button:hover {
   background: rgba(255, 255, 255, 0.64);
 }
 
@@ -379,16 +374,6 @@ input:focus {
   stroke-width: 2;
   stroke-linecap: round;
   stroke-linejoin: round;
-}
-
-.project-action-menu {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 0.55rem;
-  padding: 0.7rem;
-  border: 1px solid #d8e2ef;
-  border-radius: 0.85rem;
-  background: #f8fbff;
 }
 
 .project-choice-group {
@@ -475,27 +460,6 @@ input:focus {
       transparent 57% 100%
     ),
     #ffffff;
-}
-
-.menu-action-button {
-  width: 100%;
-  padding: 0.75rem 0.85rem;
-  background: #edf3fb;
-  color: #1c345f;
-  text-align: left;
-}
-
-.menu-action-button:hover {
-  background: #dfeaf8;
-}
-
-.menu-danger-button {
-  background: #ffe2e0;
-  color: #972f2a;
-}
-
-.menu-danger-button:hover {
-  background: #ffd2cf;
 }
 
 .list-section {
@@ -605,10 +569,6 @@ input:focus {
   }
 
   .project-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .project-action-menu {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
