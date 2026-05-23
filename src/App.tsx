@@ -40,6 +40,9 @@ function App() {
   const [newProjectName, setNewProjectName] = useState('')
   const [editingProjectId, setEditingProjectId] = useState<string | null>(null)
   const [editingProjectName, setEditingProjectName] = useState('')
+  const [activeProjectMenuId, setActiveProjectMenuId] = useState<string | null>(
+    null,
+  )
   const [newTaskText, setNewTaskText] = useState('')
   const [showCompleted, setShowCompleted] = useState(false)
   const [projectsLoading, setProjectsLoading] = useState(false)
@@ -74,6 +77,7 @@ function App() {
     setNewProjectName('')
     setEditingProjectId(null)
     setEditingProjectName('')
+    setActiveProjectMenuId(null)
     setNewTaskText('')
     setShowCompleted(false)
     setProjectsError(null)
@@ -327,12 +331,14 @@ function App() {
   const handleStartProjectEdit = (project: Project) => {
     setEditingProjectId(project.id)
     setEditingProjectName(project.name)
+    setActiveProjectMenuId(null)
     setProjectActionError(null)
   }
 
   const handleCancelProjectEdit = () => {
     setEditingProjectId(null)
     setEditingProjectName('')
+    setActiveProjectMenuId(null)
   }
 
   const handleSaveProjectEdit = async (projectId: string) => {
@@ -363,6 +369,7 @@ function App() {
 
       setEditingProjectId(null)
       setEditingProjectName('')
+      setActiveProjectMenuId(null)
       await fetchProjects()
     } catch (error) {
       setProjectActionError(getErrorMessage(error))
@@ -404,6 +411,7 @@ function App() {
         setEditingProjectName('')
       }
 
+      setActiveProjectMenuId(null)
       await fetchProjects()
     } catch (error) {
       setProjectActionError(getErrorMessage(error))
@@ -414,6 +422,7 @@ function App() {
 
   const handleOpenProject = (projectId: string) => {
     setSelectedProjectId(projectId)
+    setActiveProjectMenuId(null)
     setTaskActionError(null)
     setTasksError(null)
     setShowCompleted(false)
@@ -809,6 +818,7 @@ function App() {
               <ul className="project-grid">
                 {projects.map((project) => {
                   const isEditing = editingProjectId === project.id
+                  const isMenuOpen = activeProjectMenuId === project.id
 
                   return (
                     <li key={project.id} className="project-card">
@@ -851,35 +861,61 @@ function App() {
                         </form>
                       ) : (
                         <>
-                          <button
-                            className="project-open-button"
-                            type="button"
-                            onClick={() => handleOpenProject(project.id)}
-                          >
-                            <strong>{project.name}</strong>
-                            <span>
-                              Tap to open this project&apos;s task list.
-                            </span>
-                          </button>
-
-                          <div className="button-row card-actions">
+                          <div className="project-card-header">
                             <button
-                              className="secondary-button"
+                              className="project-open-button"
                               type="button"
-                              onClick={() => handleStartProjectEdit(project)}
-                              disabled={projectSubmitting}
+                              onClick={() => handleOpenProject(project.id)}
                             >
-                              Edit
+                              <strong>{project.name}</strong>
+                              <span>
+                                Tap to open this project&apos;s task list.
+                              </span>
                             </button>
                             <button
-                              className="danger-button"
+                              className="project-menu-button"
                               type="button"
-                              onClick={() => void handleDeleteProject(project)}
+                              aria-expanded={isMenuOpen}
+                              aria-label={`Edit ${project.name}`}
+                              onClick={() =>
+                                setActiveProjectMenuId((currentProjectId) =>
+                                  currentProjectId === project.id
+                                    ? null
+                                    : project.id,
+                                )
+                              }
                               disabled={projectSubmitting}
                             >
-                              Delete
+                              <svg
+                                aria-hidden="true"
+                                viewBox="0 0 24 24"
+                                focusable="false"
+                              >
+                                <path d="M15.2 5.2 18.8 8.8M4 20l4.2-1 11-11a2.6 2.6 0 0 0-3.7-3.7l-11 11L4 20Z" />
+                              </svg>
                             </button>
                           </div>
+
+                          {isMenuOpen ? (
+                            <div className="project-action-menu">
+                              <button
+                                className="menu-action-button"
+                                type="button"
+                                onClick={() => handleStartProjectEdit(project)}
+                                disabled={projectSubmitting}
+                              >
+                                Rename Project
+                              </button>
+                              <button
+                                className="menu-action-button menu-danger-button"
+                                type="button"
+                                onClick={() => void handleDeleteProject(project)}
+                                disabled={projectSubmitting}
+                              >
+                                Delete Project
+                              </button>
+                            </div>
+                          ) : null}
                         </>
                       )}
                     </li>
