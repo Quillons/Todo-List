@@ -32,6 +32,12 @@ function getErrorMessage(error: unknown) {
   return 'Something went wrong while talking to Supabase.'
 }
 
+function capitalizeFirstLetter(value: string) {
+  return value.replace(/^(\s*)([a-z])/, (_match, prefix, firstLetter) => {
+    return `${prefix}${firstLetter.toUpperCase()}`
+  })
+}
+
 type ProjectCardStyle = CSSProperties & {
   '--project-card-bg': string
   '--project-card-text': string
@@ -469,13 +475,14 @@ function TaskRow({
           aria-label={`Reorder ${task.text}`}
           title="Reorder"
           onPointerDown={(event) => {
-            event.preventDefault()
             event.stopPropagation()
 
-            if (disabled || !event.isPrimary) {
+            if (disabled || !event.isPrimary || event.pointerType === 'touch') {
               return
             }
 
+            event.preventDefault()
+            event.currentTarget.setPointerCapture(event.pointerId)
             onReorderDragStart(task.id, reorderGroup)
           }}
           onPointerMove={(event) => {
@@ -486,11 +493,25 @@ function TaskRow({
             event.preventDefault()
             event.stopPropagation()
 
+            if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+              event.currentTarget.releasePointerCapture(event.pointerId)
+            }
+
             onReorderDragEnd()
           }}
           onPointerCancel={(event) => {
             event.stopPropagation()
             onReorderDragEnd()
+          }}
+          onTouchStart={(event) => {
+            event.preventDefault()
+            event.stopPropagation()
+
+            if (disabled) {
+              return
+            }
+
+            onReorderDragStart(task.id, reorderGroup)
           }}
           disabled={disabled}
         >
@@ -540,7 +561,7 @@ function App() {
   const [authLoading, setAuthLoading] = useState(false)
   const [authError, setAuthError] = useState<string | null>(null)
 
-  const [appView, setAppView] = useState<AppView>('projects')
+  const [appView, setAppView] = useState<AppView>('daily')
   const [projects, setProjects] = useState<Project[]>([])
   const [tasks, setTasks] = useState<Task[]>([])
   const [dailyTasks, setDailyTasks] = useState<DailyTask[]>([])
@@ -627,7 +648,7 @@ function App() {
   }, [dailyTasks])
 
   function clearAppState() {
-    setAppView('projects')
+    setAppView('daily')
     setProjects([])
     setTasks([])
     setDailyTasks([])
@@ -1058,6 +1079,22 @@ function App() {
       handleTaskDragEnd()
     }
 
+    const handleTouchMove = (event: TouchEvent) => {
+      const touch = event.touches[0]
+
+      if (!touch) {
+        return
+      }
+
+      event.preventDefault()
+      handleTaskPointerMove(draggingTask.group, touch.clientY)
+    }
+
+    const handleTouchEnd = (event: TouchEvent) => {
+      event.preventDefault()
+      handleTaskDragEnd()
+    }
+
     window.addEventListener('pointermove', handlePointerMove, {
       passive: false,
     })
@@ -1065,11 +1102,17 @@ function App() {
     window.addEventListener('pointercancel', handlePointerEnd, {
       passive: false,
     })
+    window.addEventListener('touchmove', handleTouchMove, { passive: false })
+    window.addEventListener('touchend', handleTouchEnd, { passive: false })
+    window.addEventListener('touchcancel', handleTouchEnd, { passive: false })
 
     return () => {
       window.removeEventListener('pointermove', handlePointerMove)
       window.removeEventListener('pointerup', handlePointerEnd)
       window.removeEventListener('pointercancel', handlePointerEnd)
+      window.removeEventListener('touchmove', handleTouchMove)
+      window.removeEventListener('touchend', handleTouchEnd)
+      window.removeEventListener('touchcancel', handleTouchEnd)
     }
   }, [draggingTask])
 
@@ -1241,7 +1284,7 @@ function App() {
       return
     }
 
-    const trimmedName = newProjectName.trim()
+    const trimmedName = capitalizeFirstLetter(newProjectName).trim()
     if (!trimmedName) {
       setProjectActionError('Project name cannot be empty.')
       return
@@ -1409,7 +1452,7 @@ function App() {
       return
     }
 
-    const trimmedText = newTaskText.trim()
+    const trimmedText = capitalizeFirstLetter(newTaskText).trim()
     if (!trimmedText) {
       setTaskActionError('Task text cannot be empty.')
       return
@@ -1990,7 +2033,9 @@ function App() {
                 <input
                   type="text"
                   value={newTaskText}
-                  onChange={(event) => setNewTaskText(event.target.value)}
+                  onChange={(event) =>
+                    setNewTaskText(capitalizeFirstLetter(event.target.value))
+                  }
                   placeholder="Add a task for this project"
                   disabled={Boolean(configError) || taskSubmitting}
                 />
@@ -2102,26 +2147,6 @@ function App() {
                 ))}
               </div>
             ) : null}
-
-            <form className="inline-form" onSubmit={handleCreateProject}>
-              <label className="field-group">
-                <span className="field-label">New project</span>
-                <input
-                  type="text"
-                  value={newProjectName}
-                  onChange={(event) => setNewProjectName(event.target.value)}
-                  placeholder="Apartment, Work, Errands..."
-                  disabled={Boolean(configError) || projectSubmitting}
-                />
-              </label>
-              <button
-                className="primary-button"
-                type="submit"
-                disabled={Boolean(configError) || projectSubmitting}
-              >
-                {projectSubmitting ? 'Saving...' : 'Add Project'}
-              </button>
-            </form>
 
             {projects.length > 0 ? (
               <ul className="project-grid">
@@ -2348,9 +2373,31 @@ function App() {
               <p className="empty-state">
                 {projectsLoading
                   ? 'Loading your projects...'
-                  : 'No projects yet. Add your first category above.'}
+                  : 'No projects yet. Add your first category below.'}
               </p>
             )}
+
+            <form className="inline-form" onSubmit={handleCreateProject}>
+              <label className="field-group">
+                <span className="field-label">New project</span>
+                <input
+                  type="text"
+                  value={newProjectName}
+                  onChange={(event) =>
+                    setNewProjectName(capitalizeFirstLetter(event.target.value))
+                  }
+                  placeholder="Apartment, Work, Errands..."
+                  disabled={Boolean(configError) || projectSubmitting}
+                />
+              </label>
+              <button
+                className="primary-button"
+                type="submit"
+                disabled={Boolean(configError) || projectSubmitting}
+              >
+                {projectSubmitting ? 'Saving...' : 'Add Project'}
+              </button>
+            </form>
           </section>
         )}
       </section>
