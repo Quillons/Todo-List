@@ -65,6 +65,14 @@ type TaskDragState = {
   group: TaskReorderGroup
 }
 
+type TaskDragLayout = {
+  group: TaskReorderGroup
+  rows: Array<{
+    id: string
+    centerY: number
+  }>
+}
+
 const SWIPE_THRESHOLD = 72
 const SWIPE_IGNORE_VERTICAL = 16
 
@@ -83,6 +91,28 @@ function moveItem<T extends { id: string }>(
   const next = [...items]
   const [draggedItem] = next.splice(fromIndex, 1)
   next.splice(toIndex, 0, draggedItem)
+  return next
+}
+
+function moveItemToIndex<T extends { id: string }>(
+  items: T[],
+  draggedId: string,
+  targetIndex: number,
+) {
+  const draggedItem = items.find((item) => item.id === draggedId)
+
+  if (!draggedItem) {
+    return items
+  }
+
+  const next = items.filter((item) => item.id !== draggedId)
+  const safeTargetIndex = Math.max(0, Math.min(targetIndex, next.length))
+  next.splice(safeTargetIndex, 0, draggedItem)
+
+  if (next.every((item, index) => item.id === items[index]?.id)) {
+    return items
+  }
+
   return next
 }
 
@@ -322,7 +352,6 @@ function TaskRow({
   onReorderDragStart,
   onReorderDragEnter,
   onReorderDragEnd,
-  onReorderPointerMove,
 }: {
   task: Task
   projectName?: string
@@ -340,11 +369,6 @@ function TaskRow({
   onReorderDragStart: (taskId: string, group: TaskReorderGroup) => void
   onReorderDragEnter: (taskId: string, group: TaskReorderGroup) => void
   onReorderDragEnd: () => void
-  onReorderPointerMove: (
-    group: TaskReorderGroup,
-    clientX: number,
-    clientY: number,
-  ) => void
 }) {
   const swipeStart = useRef<SwipeState | null>(null)
   const [swipeOffset, setSwipeOffset] = useState(0)
@@ -445,28 +469,29 @@ function TaskRow({
           aria-label={`Reorder ${task.text}`}
           title="Reorder"
           onPointerDown={(event) => {
+            event.preventDefault()
+            event.stopPropagation()
+
             if (disabled || !event.isPrimary) {
               return
             }
 
-            event.currentTarget.setPointerCapture(event.pointerId)
             onReorderDragStart(task.id, reorderGroup)
           }}
           onPointerMove={(event) => {
-            if (!event.currentTarget.hasPointerCapture(event.pointerId)) {
-              return
-            }
-
-            onReorderPointerMove(reorderGroup, event.clientX, event.clientY)
+            event.preventDefault()
+            event.stopPropagation()
           }}
           onPointerUp={(event) => {
-            if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-              event.currentTarget.releasePointerCapture(event.pointerId)
-            }
+            event.preventDefault()
+            event.stopPropagation()
 
             onReorderDragEnd()
           }}
-          onPointerCancel={onReorderDragEnd}
+          onPointerCancel={(event) => {
+            event.stopPropagation()
+            onReorderDragEnd()
+          }}
           disabled={disabled}
         >
           <CardStackIcon />
@@ -532,6 +557,7 @@ function App() {
   const taskDragChangedRef = useRef(false)
   const draggingProjectIdRef = useRef<string | null>(null)
   const draggingTaskRef = useRef<TaskDragState | null>(null)
+  const taskDragLayoutRef = useRef<TaskDragLayout | null>(null)
   const [newProjectName, setNewProjectName] = useState('')
   const [editingProjectId, setEditingProjectId] = useState<string | null>(null)
   const [editingProjectName, setEditingProjectName] = useState('')
@@ -618,6 +644,7 @@ function App() {
     setDraggingTask(null)
     draggingProjectIdRef.current = null
     draggingTaskRef.current = null
+    taskDragLayoutRef.current = null
     setProjectsError(null)
     setTasksError(null)
     setDailyTasksError(null)
@@ -854,7 +881,24 @@ function App() {
   const handleTaskDragStart = (taskId: string, group: TaskReorderGroup) => {
     taskDragChangedRef.current = false
     const nextDraggingTask = { id: taskId, group }
+    const dragRows = Array.from(
+      document.querySelectorAll<HTMLElement>(`[data-task-group="${group}"]`),
+    )
+      .filter((row) => row.dataset.taskId && row.dataset.taskId !== taskId)
+      .map((row) => {
+        const rect = row.getBoundingClientRect()
+
+        return {
+          id: row.dataset.taskId!,
+          centerY: rect.top + rect.height / 2,
+        }
+      })
+
     draggingTaskRef.current = nextDraggingTask
+    taskDragLayoutRef.current = {
+      group,
+      rows: dragRows,
+    }
     setDraggingTask(nextDraggingTask)
     setTaskActionError(null)
   }
@@ -890,14 +934,71 @@ function App() {
       const reorderedItems = applySortOrder(
         moveItem(groupItems, activeTaskId, targetTaskId),
       )
-      const reorderedById = new Map(
-        reorderedItems.map((task) => [task.id, task]),
-      )
-      const next = current.map((task) => reorderedById.get(task.id) ?? task)
+      let reorderedIndex = 0
+      const next = current.map((task) => {
+        if (!groupItems.some((groupItem) => groupItem.id === task.id)) {
+          return task
+        }
+
+        const reorderedTask = reorderedItems[reorderedIndex]
+        reorderedIndex += 1
+        return reorderedTask
+      })
       tasksRef.current = next
       return next
     })
     taskDragChangedRef.current = true
+  }
+
+  const handleTaskDragToIndex = (
+    targetIndex: number,
+    group: TaskReorderGroup,
+  ) => {
+    if (!draggingTaskRef.current || draggingTaskRef.current.group !== group) {
+      return
+    }
+
+    const activeTaskId = draggingTaskRef.current.id
+
+    if (group === 'daily') {
+      setDailyTasks((current) => {
+        const movedItems = moveItemToIndex(current, activeTaskId, targetIndex)
+
+        if (movedItems === current) {
+          return current
+        }
+
+        const next = applySortOrder(movedItems)
+        dailyTasksRef.current = next
+        taskDragChangedRef.current = true
+        return next
+      })
+      return
+    }
+
+    setTasks((current) => {
+      const groupItems = getTaskReorderItems(current, group)
+      const movedItems = moveItemToIndex(groupItems, activeTaskId, targetIndex)
+
+      if (movedItems === groupItems) {
+        return current
+      }
+
+      const reorderedItems = applySortOrder(movedItems)
+      let reorderedIndex = 0
+      const next = current.map((task) => {
+        if (!groupItems.some((groupItem) => groupItem.id === task.id)) {
+          return task
+        }
+
+        const reorderedTask = reorderedItems[reorderedIndex]
+        reorderedIndex += 1
+        return reorderedTask
+      })
+      tasksRef.current = next
+      taskDragChangedRef.current = true
+      return next
+    })
   }
 
   const handleTaskDragEnd = () => {
@@ -913,6 +1014,7 @@ function App() {
         : getTaskReorderItems(tasksRef.current, activeDraggingTask.group)
 
     draggingTaskRef.current = null
+    taskDragLayoutRef.current = null
     setDraggingTask(null)
 
     if (taskDragChangedRef.current) {
@@ -922,22 +1024,54 @@ function App() {
 
   const handleTaskPointerMove = (
     group: TaskReorderGroup,
-    clientX: number,
     clientY: number,
   ) => {
     if (!draggingTaskRef.current || draggingTaskRef.current.group !== group) {
       return
     }
 
-    const targetElement = document
-      .elementFromPoint(clientX, clientY)
-      ?.closest<HTMLElement>(`[data-task-group="${group}"]`)
-    const targetTaskId = targetElement?.dataset.taskId
+    const rows =
+      taskDragLayoutRef.current?.group === group
+        ? taskDragLayoutRef.current.rows
+        : []
 
-    if (targetTaskId) {
-      handleTaskDragEnter(targetTaskId, group)
-    }
+    const targetIndex = rows.findIndex((row) => clientY < row.centerY)
+
+    handleTaskDragToIndex(
+      targetIndex === -1 ? rows.length : targetIndex,
+      group,
+    )
   }
+
+  useEffect(() => {
+    if (!draggingTask) {
+      return
+    }
+
+    const handlePointerMove = (event: PointerEvent) => {
+      event.preventDefault()
+      handleTaskPointerMove(draggingTask.group, event.clientY)
+    }
+
+    const handlePointerEnd = (event: PointerEvent) => {
+      event.preventDefault()
+      handleTaskDragEnd()
+    }
+
+    window.addEventListener('pointermove', handlePointerMove, {
+      passive: false,
+    })
+    window.addEventListener('pointerup', handlePointerEnd, { passive: false })
+    window.addEventListener('pointercancel', handlePointerEnd, {
+      passive: false,
+    })
+
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove)
+      window.removeEventListener('pointerup', handlePointerEnd)
+      window.removeEventListener('pointercancel', handlePointerEnd)
+    }
+  }, [draggingTask])
 
   useEffect(() => {
     if (configError) {
@@ -1649,7 +1783,6 @@ function App() {
       onReorderDragStart={handleTaskDragStart}
       onReorderDragEnter={handleTaskDragEnter}
       onReorderDragEnd={handleTaskDragEnd}
-      onReorderPointerMove={handleTaskPointerMove}
     />
   )
 

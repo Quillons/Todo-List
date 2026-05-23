@@ -571,6 +571,10 @@ input:focus {
   opacity: 0.58;
 }
 
+.task-item.is-dragging {
+  pointer-events: none;
+}
+
 .task-item-content {
   position: relative;
   z-index: 1;
