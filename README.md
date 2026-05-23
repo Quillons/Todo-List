@@ -75,6 +75,41 @@ alter table public.projects
 add column if not exists user_id uuid references auth.users(id) on delete cascade;
 
 alter table public.projects
+add column if not exists card_color text;
+
+alter table public.projects
+add column if not exists card_icon text;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'projects_card_color_check'
+  ) then
+    alter table public.projects
+    add constraint projects_card_color_check
+    check (
+      card_color is null
+      or card_color in ('red', 'orange', 'yellow', 'green', 'blue', 'indigo', 'violet')
+    );
+  end if;
+
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'projects_card_icon_check'
+  ) then
+    alter table public.projects
+    add constraint projects_card_icon_check
+    check (
+      card_icon is null
+      or card_icon in ('house', 'bicycle', 'lightbulb', 'car', 'running', 'euro', 'shopping')
+    );
+  end if;
+end $$;
+
+alter table public.projects
 alter column user_id set not null;
 
 alter table public.projects enable row level security;

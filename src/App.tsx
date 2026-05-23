@@ -1,8 +1,15 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import {
+  useEffect,
+  useState,
+  type CSSProperties,
+  type FormEvent,
+} from 'react'
 import type { Session } from '@supabase/supabase-js'
 import {
   getSupabaseClient,
   getSupabaseConfigError,
+  type ProjectCardColor,
+  type ProjectCardIcon,
   type Project,
   type Task,
 } from './lib/supabaseClient'
@@ -24,6 +31,200 @@ function getErrorMessage(error: unknown) {
   return 'Something went wrong while talking to Supabase.'
 }
 
+type ProjectCardStyle = CSSProperties & {
+  '--project-card-bg': string
+  '--project-card-text': string
+  '--project-card-icon': string
+}
+
+type ChoiceStyle = CSSProperties & {
+  '--choice-bg': string
+  '--choice-text': string
+}
+
+const PROJECT_COLOR_OPTIONS: Array<{
+  value: ProjectCardColor | null
+  label: string
+  background: string
+  text: string
+  icon: string
+}> = [
+  {
+    value: null,
+    label: 'No color',
+    background: '#ffffff',
+    text: '#172033',
+    icon: '#d8e2ef',
+  },
+  {
+    value: 'red',
+    label: 'Red',
+    background: '#FADADD',
+    text: '#8A2F3B',
+    icon: '#E8AEB6',
+  },
+  {
+    value: 'orange',
+    label: 'Orange',
+    background: '#FFE1C2',
+    text: '#8A4B13',
+    icon: '#EDB574',
+  },
+  {
+    value: 'yellow',
+    label: 'Yellow',
+    background: '#FFF3B8',
+    text: '#735C00',
+    icon: '#E4CB61',
+  },
+  {
+    value: 'green',
+    label: 'Green',
+    background: '#DDF3D8',
+    text: '#2F6B3A',
+    icon: '#A8D7A1',
+  },
+  {
+    value: 'blue',
+    label: 'Blue',
+    background: '#DCEEFF',
+    text: '#245E8F',
+    icon: '#A7D0F5',
+  },
+  {
+    value: 'indigo',
+    label: 'Indigo',
+    background: '#E3E1FF',
+    text: '#4D458F',
+    icon: '#BBB5F5',
+  },
+  {
+    value: 'violet',
+    label: 'Violet',
+    background: '#F0DDF8',
+    text: '#6B3A82',
+    icon: '#D1AFE0',
+  },
+]
+
+const PROJECT_ICON_OPTIONS: Array<{
+  value: ProjectCardIcon | null
+  label: string
+}> = [
+  { value: null, label: 'No icon' },
+  { value: 'house', label: 'House' },
+  { value: 'bicycle', label: 'Bicycle' },
+  { value: 'lightbulb', label: 'Lightbulb' },
+  { value: 'car', label: 'Car' },
+  { value: 'running', label: 'Running' },
+  { value: 'euro', label: 'Euro' },
+  { value: 'shopping', label: 'Shopping' },
+]
+
+function getProjectColorOption(color: ProjectCardColor | null) {
+  return (
+    PROJECT_COLOR_OPTIONS.find((colorOption) => colorOption.value === color) ??
+    PROJECT_COLOR_OPTIONS[0]
+  )
+}
+
+function getProjectCardStyle(color: ProjectCardColor | null) {
+  const colorOption = getProjectColorOption(color)
+
+  return {
+    '--project-card-bg': colorOption.background,
+    '--project-card-text': colorOption.text,
+    '--project-card-icon': colorOption.icon,
+  } as ProjectCardStyle
+}
+
+function getChoiceStyle(color: ProjectCardColor | null) {
+  const colorOption = getProjectColorOption(color)
+
+  return {
+    '--choice-bg': colorOption.background,
+    '--choice-text': colorOption.text,
+  } as ChoiceStyle
+}
+
+function ProjectIconSvg({
+  icon,
+  className,
+}: {
+  icon: ProjectCardIcon
+  className?: string
+}) {
+  switch (icon) {
+    case 'house':
+      return (
+        <svg className={className} aria-hidden="true" viewBox="0 0 64 64">
+          <path d="M10 30 32 12l22 18" />
+          <path d="M16 28v24h32V28" />
+          <path d="M27 52V38h10v14" />
+        </svg>
+      )
+    case 'bicycle':
+      return (
+        <svg className={className} aria-hidden="true" viewBox="0 0 64 64">
+          <circle cx="18" cy="44" r="11" />
+          <circle cx="48" cy="44" r="11" />
+          <path d="M18 44h12l8-18h-9" />
+          <path d="M30 44 22 28h-6" />
+          <path d="M38 26 48 44" />
+          <path d="M37 18h9" />
+        </svg>
+      )
+    case 'lightbulb':
+      return (
+        <svg className={className} aria-hidden="true" viewBox="0 0 64 64">
+          <path d="M22 29a10 10 0 1 1 20 0c0 5-4 8-6 12h-8c-2-4-6-7-6-12Z" />
+          <path d="M27 47h10" />
+          <path d="M29 53h6" />
+          <path d="M32 8v6" />
+          <path d="M48 16l-4 4" />
+          <path d="M16 16l4 4" />
+        </svg>
+      )
+    case 'car':
+      return (
+        <svg className={className} aria-hidden="true" viewBox="0 0 64 64">
+          <path d="M13 36h38l-5-14H18l-5 14Z" />
+          <path d="M10 36v12h44V36" />
+          <circle cx="20" cy="48" r="5" />
+          <circle cx="44" cy="48" r="5" />
+          <path d="M21 28h22" />
+        </svg>
+      )
+    case 'running':
+      return (
+        <svg className={className} aria-hidden="true" viewBox="0 0 64 64">
+          <circle cx="39" cy="13" r="6" />
+          <path d="M35 22 24 32l10 8 7-12 8 7" />
+          <path d="M34 40 25 56" />
+          <path d="M34 40 48 54" />
+          <path d="M24 32 13 34" />
+        </svg>
+      )
+    case 'euro':
+      return (
+        <svg className={className} aria-hidden="true" viewBox="0 0 64 64">
+          <path d="M48 17a20 20 0 1 0 0 30" />
+          <path d="M14 28h28" />
+          <path d="M14 37h25" />
+        </svg>
+      )
+    case 'shopping':
+      return (
+        <svg className={className} aria-hidden="true" viewBox="0 0 64 64">
+          <path d="M18 24h28l3 30H15l3-30Z" />
+          <path d="M24 24a8 8 0 0 1 16 0" />
+          <path d="M39 30h13l3 24H43" />
+          <path d="M43 30a6 6 0 0 1 12 0" />
+        </svg>
+      )
+  }
+}
+
 function App() {
   const [session, setSession] = useState<Session | null>(null)
   const [sessionLoading, setSessionLoading] = useState(true)
@@ -40,6 +241,10 @@ function App() {
   const [newProjectName, setNewProjectName] = useState('')
   const [editingProjectId, setEditingProjectId] = useState<string | null>(null)
   const [editingProjectName, setEditingProjectName] = useState('')
+  const [editingProjectColor, setEditingProjectColor] =
+    useState<ProjectCardColor | null>(null)
+  const [editingProjectIcon, setEditingProjectIcon] =
+    useState<ProjectCardIcon | null>(null)
   const [activeProjectMenuId, setActiveProjectMenuId] = useState<string | null>(
     null,
   )
@@ -77,6 +282,8 @@ function App() {
     setNewProjectName('')
     setEditingProjectId(null)
     setEditingProjectName('')
+    setEditingProjectColor(null)
+    setEditingProjectIcon(null)
     setActiveProjectMenuId(null)
     setNewTaskText('')
     setShowCompleted(false)
@@ -331,6 +538,8 @@ function App() {
   const handleStartProjectEdit = (project: Project) => {
     setEditingProjectId(project.id)
     setEditingProjectName(project.name)
+    setEditingProjectColor(project.card_color ?? null)
+    setEditingProjectIcon(project.card_icon ?? null)
     setActiveProjectMenuId(null)
     setProjectActionError(null)
   }
@@ -338,6 +547,8 @@ function App() {
   const handleCancelProjectEdit = () => {
     setEditingProjectId(null)
     setEditingProjectName('')
+    setEditingProjectColor(null)
+    setEditingProjectIcon(null)
     setActiveProjectMenuId(null)
   }
 
@@ -360,7 +571,11 @@ function App() {
       const supabase = getSupabaseClient()
       const { error } = await supabase
         .from('projects')
-        .update({ name: trimmedName })
+        .update({
+          name: trimmedName,
+          card_color: editingProjectColor,
+          card_icon: editingProjectIcon,
+        })
         .eq('id', projectId)
 
       if (error) {
@@ -369,6 +584,8 @@ function App() {
 
       setEditingProjectId(null)
       setEditingProjectName('')
+      setEditingProjectColor(null)
+      setEditingProjectIcon(null)
       setActiveProjectMenuId(null)
       await fetchProjects()
     } catch (error) {
@@ -409,6 +626,8 @@ function App() {
       if (editingProjectId === project.id) {
         setEditingProjectId(null)
         setEditingProjectName('')
+        setEditingProjectColor(null)
+        setEditingProjectIcon(null)
       }
 
       setActiveProjectMenuId(null)
@@ -625,7 +844,7 @@ function App() {
               Signed in as <strong>{session.user.email ?? 'your account'}</strong>
             </p>
             <button
-              className="secondary-button"
+              className="secondary-button sign-out-button"
               type="button"
               onClick={() => void handleSignOut()}
               disabled={authLoading}
@@ -819,9 +1038,23 @@ function App() {
                 {projects.map((project) => {
                   const isEditing = editingProjectId === project.id
                   const isMenuOpen = activeProjectMenuId === project.id
+                  const projectCardStyle = getProjectCardStyle(
+                    project.card_color ?? null,
+                  )
+                  const projectCardClassName = [
+                    'project-card',
+                    project.card_color ? 'has-project-color' : '',
+                    project.card_icon ? 'has-project-icon' : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' ')
 
                   return (
-                    <li key={project.id} className="project-card">
+                    <li
+                      key={project.id}
+                      className={projectCardClassName}
+                      style={projectCardStyle}
+                    >
                       {isEditing ? (
                         <form
                           className="project-edit-block"
@@ -841,6 +1074,68 @@ function App() {
                               disabled={projectSubmitting}
                             />
                           </label>
+                          <fieldset className="project-choice-group">
+                            <legend className="field-label">Card color</legend>
+                            <div className="choice-grid color-choice-grid">
+                              {PROJECT_COLOR_OPTIONS.map((colorOption) => {
+                                const isSelected =
+                                  editingProjectColor === colorOption.value
+
+                                return (
+                                  <button
+                                    key={colorOption.value ?? 'none'}
+                                    className={`choice-button color-choice-button${
+                                      isSelected ? ' is-selected' : ''
+                                    }`}
+                                    type="button"
+                                    style={getChoiceStyle(colorOption.value)}
+                                    aria-pressed={isSelected}
+                                    onClick={() =>
+                                      setEditingProjectColor(colorOption.value)
+                                    }
+                                    disabled={projectSubmitting}
+                                  >
+                                    <span className="color-choice-swatch" />
+                                    <span>{colorOption.label}</span>
+                                  </button>
+                                )
+                              })}
+                            </div>
+                          </fieldset>
+                          <fieldset className="project-choice-group">
+                            <legend className="field-label">Card icon</legend>
+                            <div className="choice-grid icon-choice-grid">
+                              {PROJECT_ICON_OPTIONS.map((iconOption) => {
+                                const isSelected =
+                                  editingProjectIcon === iconOption.value
+
+                                return (
+                                  <button
+                                    key={iconOption.value ?? 'none'}
+                                    className={`choice-button icon-choice-button${
+                                      isSelected ? ' is-selected' : ''
+                                    }`}
+                                    type="button"
+                                    aria-pressed={isSelected}
+                                    onClick={() =>
+                                      setEditingProjectIcon(iconOption.value)
+                                    }
+                                    disabled={projectSubmitting}
+                                  >
+                                    {iconOption.value ? (
+                                      <ProjectIconSvg
+                                        icon={iconOption.value}
+                                        className="choice-icon"
+                                      />
+                                    ) : (
+                                      <span className="no-icon-mark" />
+                                    )}
+                                    <span>{iconOption.label}</span>
+                                  </button>
+                                )
+                              })}
+                            </div>
+                          </fieldset>
                           <div className="button-row">
                             <button
                               className="primary-button"
@@ -861,6 +1156,12 @@ function App() {
                         </form>
                       ) : (
                         <>
+                          {project.card_icon ? (
+                            <ProjectIconSvg
+                              icon={project.card_icon}
+                              className="project-card-watermark"
+                            />
+                          ) : null}
                           <div className="project-card-header">
                             <button
                               className="project-open-button"
@@ -868,9 +1169,6 @@ function App() {
                               onClick={() => handleOpenProject(project.id)}
                             >
                               <strong>{project.name}</strong>
-                              <span>
-                                Tap to open this project&apos;s task list.
-                              </span>
                             </button>
                             <button
                               className="project-menu-button"
@@ -904,7 +1202,7 @@ function App() {
                                 onClick={() => handleStartProjectEdit(project)}
                                 disabled={projectSubmitting}
                               >
-                                Rename Project
+                                Edit Project
                               </button>
                               <button
                                 className="menu-action-button menu-danger-button"

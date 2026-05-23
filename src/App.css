@@ -108,9 +108,11 @@ h3 {
 }
 
 .topbar-actions {
-  display: grid;
-  gap: 0.75rem;
-  justify-items: start;
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+  justify-content: flex-start;
 }
 
 .session-note,
@@ -154,6 +156,7 @@ input:focus {
 .icon-button,
 .project-menu-button,
 .menu-action-button,
+.choice-button,
 .completed-toggle {
   border: 0;
   border-radius: 0.85rem;
@@ -171,7 +174,8 @@ input:focus {
 .danger-button:disabled,
 .icon-button:disabled,
 .project-menu-button:disabled,
-.menu-action-button:disabled {
+.menu-action-button:disabled,
+.choice-button:disabled {
   cursor: wait;
   opacity: 0.78;
 }
@@ -194,6 +198,13 @@ input:focus {
   background: #dfeaf8;
 }
 
+.sign-out-button {
+  padding: 0.45rem 0.7rem;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  line-height: 1.2;
+}
+
 .danger-button,
 .icon-button.danger-button {
   background: #ffe2e0;
@@ -211,6 +222,7 @@ input:focus {
 .icon-button:active,
 .project-menu-button:active,
 .menu-action-button:active,
+.choice-button:active,
 .completed-toggle:active {
   transform: translateY(1px);
 }
@@ -269,6 +281,40 @@ input:focus {
   padding: 0.95rem;
   display: grid;
   gap: 0.9rem;
+  position: relative;
+  overflow: hidden;
+  color: var(--project-card-text, #172033);
+  background: var(--project-card-bg, #ffffff);
+}
+
+.project-card > * {
+  position: relative;
+  z-index: 1;
+}
+
+.project-card.has-project-color {
+  border-color: transparent;
+}
+
+.project-card-watermark {
+  position: absolute;
+  right: -1.5rem;
+  bottom: -2.25rem;
+  z-index: 0;
+  width: 9rem;
+  height: 9rem;
+  color: var(--project-card-icon, #d8e2ef);
+  opacity: 0.72;
+  pointer-events: none;
+}
+
+.project-card-watermark path,
+.project-card-watermark circle {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .project-card-header {
@@ -281,27 +327,20 @@ input:focus {
 .project-open-button {
   width: 100%;
   border: 0;
-  padding: 1rem;
+  padding: 0.9rem 1rem;
   border-radius: 0.9rem;
-  background: #f5f8fc;
+  background: rgba(245, 248, 252, 0.76);
   text-align: left;
-  color: #172033;
+  color: var(--project-card-text, #172033);
   cursor: pointer;
-  display: grid;
-  gap: 0.35rem;
 }
 
 .project-open-button:hover {
-  background: #ebf1fa;
+  background: rgba(235, 241, 250, 0.82);
 }
 
 .project-open-button strong {
   font-size: 1.08rem;
-}
-
-.project-open-button span {
-  color: #5d6c84;
-  font-size: 0.9rem;
 }
 
 .project-menu-button {
@@ -310,7 +349,7 @@ input:focus {
   padding: 0;
   border-radius: 999px;
   background: #edf3fb;
-  color: #1c345f;
+  color: var(--project-card-text, #1c345f);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -319,6 +358,17 @@ input:focus {
 .project-menu-button:hover,
 .project-menu-button[aria-expanded='true'] {
   background: #dfeaf8;
+}
+
+.project-card.has-project-color .project-open-button,
+.project-card.has-project-color .project-menu-button {
+  background: rgba(255, 255, 255, 0.42);
+}
+
+.project-card.has-project-color .project-open-button:hover,
+.project-card.has-project-color .project-menu-button:hover,
+.project-card.has-project-color .project-menu-button[aria-expanded='true'] {
+  background: rgba(255, 255, 255, 0.64);
 }
 
 .project-menu-button svg {
@@ -339,6 +389,92 @@ input:focus {
   border: 1px solid #d8e2ef;
   border-radius: 0.85rem;
   background: #f8fbff;
+}
+
+.project-choice-group {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.choice-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+
+.choice-button {
+  min-width: 0;
+  padding: 0.65rem 0.7rem;
+  background: #edf3fb;
+  color: #1c345f;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  text-align: left;
+  border: 2px solid transparent;
+}
+
+.choice-button:hover {
+  background: #dfeaf8;
+}
+
+.choice-button.is-selected {
+  border-color: currentColor;
+  background: #ffffff;
+}
+
+.color-choice-button {
+  color: var(--choice-text, #172033);
+}
+
+.color-choice-button.is-selected,
+.color-choice-button:hover {
+  background: var(--choice-bg, #ffffff);
+}
+
+.color-choice-swatch,
+.no-icon-mark {
+  width: 1.3rem;
+  height: 1.3rem;
+  border-radius: 999px;
+  flex: 0 0 auto;
+}
+
+.color-choice-swatch {
+  border: 1px solid rgba(23, 32, 51, 0.22);
+  background: var(--choice-bg, #ffffff);
+}
+
+.choice-icon {
+  width: 1.45rem;
+  height: 1.45rem;
+  color: #4f698c;
+  flex: 0 0 auto;
+}
+
+.choice-icon path,
+.choice-icon circle {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.no-icon-mark {
+  border: 2px solid #aebbd0;
+  background:
+    linear-gradient(
+      135deg,
+      transparent 0 43%,
+      #aebbd0 43% 57%,
+      transparent 57% 100%
+    ),
+    #ffffff;
 }
 
 .menu-action-button {

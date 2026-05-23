@@ -1,9 +1,29 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 
+export type ProjectCardColor =
+  | 'red'
+  | 'orange'
+  | 'yellow'
+  | 'green'
+  | 'blue'
+  | 'indigo'
+  | 'violet'
+
+export type ProjectCardIcon =
+  | 'house'
+  | 'bicycle'
+  | 'lightbulb'
+  | 'car'
+  | 'running'
+  | 'euro'
+  | 'shopping'
+
 export type Project = {
   id: string
   user_id: string
   name: string
+  card_color: ProjectCardColor | null
+  card_icon: ProjectCardIcon | null
   created_at: string | null
 }
 
