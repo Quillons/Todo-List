@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useRef,
   useState,
   type CSSProperties,
   type FormEvent,
@@ -41,6 +42,24 @@ type ChoiceStyle = CSSProperties & {
   '--choice-bg': string
   '--choice-text': string
 }
+
+type AppView = 'projects' | 'daily'
+
+type DailyTask = Task & {
+  project_name: string
+}
+
+type DailyTaskResponse = Task & {
+  projects?: { name: string } | Array<{ name: string }> | null
+}
+
+type SwipeState = {
+  x: number
+  y: number
+}
+
+const SWIPE_THRESHOLD = 72
+const SWIPE_IGNORE_VERTICAL = 16
 
 const PROJECT_COLOR_OPTIONS: Array<{
   value: ProjectCardColor | null
@@ -147,6 +166,14 @@ function getChoiceStyle(color: ProjectCardColor | null) {
   } as ChoiceStyle
 }
 
+function getDailyProjectName(row: DailyTaskResponse) {
+  if (Array.isArray(row.projects)) {
+    return row.projects[0]?.name ?? 'Unknown project'
+  }
+
+  return row.projects?.name ?? 'Unknown project'
+}
+
 function ProjectIconSvg({
   icon,
   className,
@@ -226,6 +253,146 @@ function ProjectIconSvg({
   }
 }
 
+function TaskRow({
+  task,
+  projectName,
+  selected,
+  selectable,
+  swipeToDaily,
+  disabled,
+  onSelectChange,
+  onComplete,
+  onSendToDaily,
+  onRemoveFromDaily,
+  onDelete,
+}: {
+  task: Task
+  projectName?: string
+  selected: boolean
+  selectable: boolean
+  swipeToDaily: boolean
+  disabled: boolean
+  onSelectChange: (taskId: string, selected: boolean) => void
+  onComplete: (task: Task) => void
+  onSendToDaily: (task: Task) => void
+  onRemoveFromDaily: (task: Task) => void
+  onDelete: (taskId: string) => void
+}) {
+  const swipeStart = useRef<SwipeState | null>(null)
+  const [swipeOffset, setSwipeOffset] = useState(0)
+  const canSwipe = swipeToDaily && !task.completed && !task.is_daily && !disabled
+
+  const resetSwipe = () => {
+    swipeStart.current = null
+    setSwipeOffset(0)
+  }
+
+  const rowClassName = [
+    'task-item',
+    task.completed ? 'completed-task-item' : '',
+    task.is_daily ? 'daily-task-item' : '',
+    canSwipe ? 'swipeable-task' : '',
+  ]
+    .filter(Boolean)
+    .join(' ')
+
+  return (
+    <li className={rowClassName}>
+      {canSwipe ? <span className="swipe-action">Daily</span> : null}
+      <div
+        className="task-item-content"
+        style={
+          swipeOffset
+            ? { transform: `translateX(${-swipeOffset}px)` }
+            : undefined
+        }
+        onPointerDown={(event) => {
+          if (!canSwipe || event.pointerType === 'mouse') {
+            return
+          }
+
+          swipeStart.current = {
+            x: event.clientX,
+            y: event.clientY,
+          }
+        }}
+        onPointerMove={(event) => {
+          if (!swipeStart.current) {
+            return
+          }
+
+          const deltaX = event.clientX - swipeStart.current.x
+          const deltaY = event.clientY - swipeStart.current.y
+
+          if (
+            Math.abs(deltaY) > Math.abs(deltaX) &&
+            Math.abs(deltaY) > SWIPE_IGNORE_VERTICAL
+          ) {
+            resetSwipe()
+            return
+          }
+
+          if (deltaX < 0) {
+            setSwipeOffset(Math.min(Math.abs(deltaX), SWIPE_THRESHOLD + 28))
+          }
+        }}
+        onPointerCancel={resetSwipe}
+        onPointerUp={() => {
+          if (!swipeStart.current) {
+            return
+          }
+
+          if (swipeOffset >= SWIPE_THRESHOLD) {
+            onSendToDaily(task)
+          }
+
+          resetSwipe()
+        }}
+      >
+        {selectable ? (
+          <input
+            className="task-select"
+            type="checkbox"
+            aria-label={`Select ${task.text}`}
+            checked={selected}
+            onChange={(event) => onSelectChange(task.id, event.target.checked)}
+            disabled={disabled}
+          />
+        ) : null}
+        <button
+          className="task-text-button"
+          type="button"
+          onClick={() => onComplete(task)}
+          disabled={disabled || task.completed}
+        >
+          <span>{task.text}</span>
+          {projectName ? <small>{projectName}</small> : null}
+        </button>
+        <div className="task-actions">
+          {task.is_daily && !task.completed ? (
+            <button
+              className="icon-button secondary-button"
+              type="button"
+              onClick={() => onRemoveFromDaily(task)}
+              disabled={disabled}
+            >
+              Remove Daily
+            </button>
+          ) : null}
+          <button
+            className="icon-button danger-button"
+            type="button"
+            onClick={() => onDelete(task.id)}
+            disabled={disabled}
+          >
+            Delete
+          </button>
+        </div>
+      </div>
+    </li>
+  )
+}
+
 function App() {
   const [session, setSession] = useState<Session | null>(null)
   const [sessionLoading, setSessionLoading] = useState(true)
@@ -234,10 +401,15 @@ function App() {
   const [authLoading, setAuthLoading] = useState(false)
   const [authError, setAuthError] = useState<string | null>(null)
 
+  const [appView, setAppView] = useState<AppView>('projects')
   const [projects, setProjects] = useState<Project[]>([])
   const [tasks, setTasks] = useState<Task[]>([])
+  const [dailyTasks, setDailyTasks] = useState<DailyTask[]>([])
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(
     null,
+  )
+  const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(
+    () => new Set(),
   )
   const [newProjectName, setNewProjectName] = useState('')
   const [editingProjectId, setEditingProjectId] = useState<string | null>(null)
@@ -250,10 +422,12 @@ function App() {
   const [showCompleted, setShowCompleted] = useState(false)
   const [projectsLoading, setProjectsLoading] = useState(false)
   const [tasksLoading, setTasksLoading] = useState(false)
+  const [dailyTasksLoading, setDailyTasksLoading] = useState(false)
   const [projectSubmitting, setProjectSubmitting] = useState(false)
   const [taskSubmitting, setTaskSubmitting] = useState(false)
   const [projectsError, setProjectsError] = useState<string | null>(null)
   const [tasksError, setTasksError] = useState<string | null>(null)
+  const [dailyTasksError, setDailyTasksError] = useState<string | null>(null)
   const [projectActionError, setProjectActionError] = useState<string | null>(
     null,
   )
@@ -263,20 +437,39 @@ function App() {
   const selectedProject = selectedProjectId
     ? projects.find((project) => project.id === selectedProjectId) ?? null
     : null
-  const activeTasks = tasks.filter((task) => !task.completed)
+  const activeTasks = tasks.filter((task) => !task.completed && !task.is_daily)
+  const projectDailyTasks = tasks.filter(
+    (task) => !task.completed && task.is_daily,
+  )
   const completedTasks = tasks.filter((task) => task.completed)
+  const selectableTasks =
+    appView === 'daily' && !selectedProject
+      ? dailyTasks
+      : tasks.filter((task) => !task.completed)
+  const selectedTasks = selectableTasks.filter((task) =>
+    selectedTaskIds.has(task.id),
+  )
   const homeMessages = [configError, projectsError, projectActionError].filter(
     Boolean,
   ) as string[]
   const taskMessages = [configError, tasksError, taskActionError].filter(
     Boolean,
   ) as string[]
+  const dailyMessages = [
+    configError,
+    dailyTasksError,
+    taskActionError,
+  ].filter(Boolean) as string[]
   const authMessages = [configError, authError].filter(Boolean) as string[]
+  const isBusy = taskSubmitting || Boolean(configError)
 
   function clearAppState() {
+    setAppView('projects')
     setProjects([])
     setTasks([])
+    setDailyTasks([])
     setSelectedProjectId(null)
+    setSelectedTaskIds(new Set())
     setNewProjectName('')
     setEditingProjectId(null)
     setEditingProjectName('')
@@ -286,10 +479,12 @@ function App() {
     setShowCompleted(false)
     setProjectsError(null)
     setTasksError(null)
+    setDailyTasksError(null)
     setProjectActionError(null)
     setTaskActionError(null)
     setProjectsLoading(false)
     setTasksLoading(false)
+    setDailyTasksLoading(false)
     setProjectSubmitting(false)
     setTaskSubmitting(false)
   }
@@ -339,6 +534,57 @@ function App() {
     } finally {
       setTasksLoading(false)
     }
+  }
+
+  async function fetchDailyTasks() {
+    setDailyTasksLoading(true)
+    setDailyTasksError(null)
+
+    try {
+      const supabase = getSupabaseClient()
+      const { data, error } = await supabase
+        .from('tasks')
+        .select('*, projects(name)')
+        .eq('is_daily', true)
+        .eq('completed', false)
+        .order('daily_added_at', { ascending: false, nullsFirst: false })
+        .order('created_at', { ascending: true })
+
+      if (error) {
+        throw error
+      }
+
+      const rows = (data ?? []) as DailyTaskResponse[]
+
+      setDailyTasks(
+        rows.map((row) => {
+          const { projects: _projects, ...task } = row
+
+          return {
+            ...task,
+            project_name: getDailyProjectName(row),
+          }
+        }),
+      )
+    } catch (error) {
+      setDailyTasksError(getErrorMessage(error))
+    } finally {
+      setDailyTasksLoading(false)
+    }
+  }
+
+  async function refreshTaskViews(projectId = selectedProjectId) {
+    const refreshes = [fetchDailyTasks()]
+
+    if (projectId) {
+      refreshes.push(fetchTasks(projectId))
+    }
+
+    await Promise.all(refreshes)
+  }
+
+  function getVisibleProjectRefreshId(task: Task) {
+    return selectedProjectId === task.project_id ? task.project_id : null
   }
 
   useEffect(() => {
@@ -408,10 +654,12 @@ function App() {
   useEffect(() => {
     if (!session || configError) {
       setProjects([])
+      setDailyTasks([])
       return
     }
 
     void fetchProjects()
+    void fetchDailyTasks()
   }, [configError, session?.user.id])
 
   useEffect(() => {
@@ -432,6 +680,10 @@ function App() {
     setTasks([])
     void fetchTasks(selectedProjectId)
   }, [configError, selectedProjectId, session?.user.id])
+
+  useEffect(() => {
+    setSelectedTaskIds(new Set())
+  }, [appView, selectedProjectId])
 
   useEffect(() => {
     if (!selectedProjectId || projectsLoading) {
@@ -625,6 +877,7 @@ function App() {
       }
 
       await fetchProjects()
+      await fetchDailyTasks()
     } catch (error) {
       setProjectActionError(getErrorMessage(error))
     } finally {
@@ -633,6 +886,7 @@ function App() {
   }
 
   const handleOpenProject = (projectId: string) => {
+    setAppView('projects')
     setSelectedProjectId(projectId)
     setTaskActionError(null)
     setTasksError(null)
@@ -641,6 +895,19 @@ function App() {
 
   const handleBackToProjects = () => {
     setSelectedProjectId(null)
+  }
+
+  const handleShowDailyTasks = () => {
+    setAppView('daily')
+    setSelectedProjectId(null)
+    setTaskActionError(null)
+    setDailyTasksError(null)
+    void fetchDailyTasks()
+  }
+
+  const handleShowProjects = () => {
+    setAppView('projects')
+    setTaskActionError(null)
   }
 
   const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
@@ -684,13 +951,23 @@ function App() {
     }
   }
 
-  const handleToggleTask = async (task: Task) => {
+  const handleSelectTask = (taskId: string, isSelected: boolean) => {
+    setSelectedTaskIds((current) => {
+      const next = new Set(current)
+
+      if (isSelected) {
+        next.add(taskId)
+      } else {
+        next.delete(taskId)
+      }
+
+      return next
+    })
+  }
+
+  const handleSendToDaily = async (task: Task) => {
     if (!session) {
       setTaskActionError('You must be signed in to update a task.')
-      return
-    }
-
-    if (!selectedProjectId) {
       return
     }
 
@@ -701,14 +978,100 @@ function App() {
       const supabase = getSupabaseClient()
       const { error } = await supabase
         .from('tasks')
-        .update({ completed: !task.completed })
+        .update({
+          completed: false,
+          is_daily: true,
+          daily_added_at: new Date().toISOString(),
+        })
         .eq('id', task.id)
 
       if (error) {
         throw error
       }
 
-      await fetchTasks(selectedProjectId)
+      setSelectedTaskIds((current) => {
+        const next = new Set(current)
+        next.delete(task.id)
+        return next
+      })
+      await refreshTaskViews(getVisibleProjectRefreshId(task))
+    } catch (error) {
+      setTaskActionError(getErrorMessage(error))
+    } finally {
+      setTaskSubmitting(false)
+    }
+  }
+
+  const handleRemoveFromDaily = async (task: Task) => {
+    if (!session) {
+      setTaskActionError('You must be signed in to update a task.')
+      return
+    }
+
+    setTaskSubmitting(true)
+    setTaskActionError(null)
+
+    try {
+      const supabase = getSupabaseClient()
+      const { error } = await supabase
+        .from('tasks')
+        .update({
+          is_daily: false,
+          daily_added_at: null,
+        })
+        .eq('id', task.id)
+
+      if (error) {
+        throw error
+      }
+
+      setSelectedTaskIds((current) => {
+        const next = new Set(current)
+        next.delete(task.id)
+        return next
+      })
+      await refreshTaskViews(getVisibleProjectRefreshId(task))
+    } catch (error) {
+      setTaskActionError(getErrorMessage(error))
+    } finally {
+      setTaskSubmitting(false)
+    }
+  }
+
+  const handleCompleteTask = async (task: Task) => {
+    if (!session) {
+      setTaskActionError('You must be signed in to update a task.')
+      return
+    }
+
+    if (task.completed) {
+      return
+    }
+
+    setTaskSubmitting(true)
+    setTaskActionError(null)
+
+    try {
+      const supabase = getSupabaseClient()
+      const { error } = await supabase
+        .from('tasks')
+        .update({
+          completed: true,
+          is_daily: false,
+          daily_added_at: null,
+        })
+        .eq('id', task.id)
+
+      if (error) {
+        throw error
+      }
+
+      setSelectedTaskIds((current) => {
+        const next = new Set(current)
+        next.delete(task.id)
+        return next
+      })
+      await refreshTaskViews(getVisibleProjectRefreshId(task))
     } catch (error) {
       setTaskActionError(getErrorMessage(error))
     } finally {
@@ -722,9 +1085,10 @@ function App() {
       return
     }
 
-    if (!selectedProjectId) {
-      return
-    }
+    const taskToDelete =
+      tasks.find((task) => task.id === taskId) ??
+      dailyTasks.find((task) => task.id === taskId) ??
+      null
 
     setTaskSubmitting(true)
     setTaskActionError(null)
@@ -737,13 +1101,195 @@ function App() {
         throw error
       }
 
-      await fetchTasks(selectedProjectId)
+      setSelectedTaskIds((current) => {
+        const next = new Set(current)
+        next.delete(taskId)
+        return next
+      })
+      await refreshTaskViews(
+        taskToDelete ? getVisibleProjectRefreshId(taskToDelete) : selectedProjectId,
+      )
     } catch (error) {
       setTaskActionError(getErrorMessage(error))
     } finally {
       setTaskSubmitting(false)
     }
   }
+
+  const handleBulkSendToDaily = async () => {
+    const taskIds = selectedTasks
+      .filter((task) => !task.completed && !task.is_daily)
+      .map((task) => task.id)
+
+    if (taskIds.length === 0) {
+      setSelectedTaskIds(new Set())
+      return
+    }
+
+    setTaskSubmitting(true)
+    setTaskActionError(null)
+
+    try {
+      const supabase = getSupabaseClient()
+      const { error } = await supabase
+        .from('tasks')
+        .update({
+          completed: false,
+          is_daily: true,
+          daily_added_at: new Date().toISOString(),
+        })
+        .in('id', taskIds)
+
+      if (error) {
+        throw error
+      }
+
+      setSelectedTaskIds(new Set())
+      await refreshTaskViews()
+    } catch (error) {
+      setTaskActionError(getErrorMessage(error))
+    } finally {
+      setTaskSubmitting(false)
+    }
+  }
+
+  const handleBulkComplete = async () => {
+    const taskIds = selectedTasks
+      .filter((task) => !task.completed)
+      .map((task) => task.id)
+
+    if (taskIds.length === 0) {
+      setSelectedTaskIds(new Set())
+      return
+    }
+
+    setTaskSubmitting(true)
+    setTaskActionError(null)
+
+    try {
+      const supabase = getSupabaseClient()
+      const { error } = await supabase
+        .from('tasks')
+        .update({
+          completed: true,
+          is_daily: false,
+          daily_added_at: null,
+        })
+        .in('id', taskIds)
+
+      if (error) {
+        throw error
+      }
+
+      setSelectedTaskIds(new Set())
+      await refreshTaskViews()
+    } catch (error) {
+      setTaskActionError(getErrorMessage(error))
+    } finally {
+      setTaskSubmitting(false)
+    }
+  }
+
+  const handleBulkDelete = async () => {
+    const taskIds = selectedTasks.map((task) => task.id)
+
+    if (taskIds.length === 0) {
+      return
+    }
+
+    const confirmed = window.confirm(
+      `Delete ${taskIds.length} selected task${taskIds.length === 1 ? '' : 's'}?`,
+    )
+
+    if (!confirmed) {
+      return
+    }
+
+    setTaskSubmitting(true)
+    setTaskActionError(null)
+
+    try {
+      const supabase = getSupabaseClient()
+      const { error } = await supabase.from('tasks').delete().in('id', taskIds)
+
+      if (error) {
+        throw error
+      }
+
+      setSelectedTaskIds(new Set())
+      await refreshTaskViews()
+    } catch (error) {
+      setTaskActionError(getErrorMessage(error))
+    } finally {
+      setTaskSubmitting(false)
+    }
+  }
+
+  const renderBulkActions = () => {
+    if (selectedTasks.length === 0) {
+      return null
+    }
+
+    const canSendToDaily = selectedTasks.some(
+      (task) => !task.completed && !task.is_daily,
+    )
+
+    return (
+      <div className="bulk-action-bar" role="region" aria-label="Selected tasks">
+        <span>{selectedTasks.length} selected</span>
+        <div className="bulk-action-buttons">
+          <button
+            className="secondary-button"
+            type="button"
+            onClick={() => void handleBulkSendToDaily()}
+            disabled={isBusy || !canSendToDaily}
+          >
+            Send to Daily
+          </button>
+          <button
+            className="primary-button"
+            type="button"
+            onClick={() => void handleBulkComplete()}
+            disabled={isBusy}
+          >
+            Complete
+          </button>
+          <button
+            className="danger-button"
+            type="button"
+            onClick={() => void handleBulkDelete()}
+            disabled={isBusy}
+          >
+            Delete
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  const renderTaskRow = (
+    task: Task,
+    options: {
+      projectName?: string
+      swipeToDaily?: boolean
+      selectable?: boolean
+    } = {},
+  ) => (
+    <TaskRow
+      key={task.id}
+      task={task}
+      projectName={options.projectName}
+      selected={selectedTaskIds.has(task.id)}
+      selectable={options.selectable ?? !task.completed}
+      swipeToDaily={options.swipeToDaily ?? false}
+      disabled={isBusy}
+      onSelectChange={handleSelectTask}
+      onComplete={(nextTask) => void handleCompleteTask(nextTask)}
+      onSendToDaily={(nextTask) => void handleSendToDaily(nextTask)}
+      onRemoveFromDaily={(nextTask) => void handleRemoveFromDaily(nextTask)}
+      onDelete={(taskId) => void handleDeleteTask(taskId)}
+    />
+  )
 
   if (!session) {
     return (
@@ -826,9 +1372,11 @@ function App() {
           <div>
             <h1>Personal Ops Center</h1>
             <p className="intro">
-              {selectedProject
-                ? 'Track the tasks for one project at a time.'
-                : 'Manage your project categories and keep each task list tidy.'}
+              {appView === 'daily'
+                ? 'Review the tasks pulled into today from every project.'
+                : selectedProject
+                  ? 'Track the tasks for one project at a time.'
+                  : 'Manage your project categories and keep each task list tidy.'}
             </p>
           </div>
           <div className="topbar-actions">
@@ -846,7 +1394,72 @@ function App() {
           </div>
         </div>
 
-        {selectedProject ? (
+        <nav className="view-tabs" aria-label="Main views">
+          <button
+            className={appView === 'projects' ? 'is-selected' : ''}
+            type="button"
+            onClick={handleShowProjects}
+            aria-pressed={appView === 'projects'}
+          >
+            Projects
+          </button>
+          <button
+            className={appView === 'daily' ? 'is-selected' : ''}
+            type="button"
+            onClick={handleShowDailyTasks}
+            aria-pressed={appView === 'daily'}
+          >
+            Daily Tasks
+            <span className="count-pill">{dailyTasks.length}</span>
+          </button>
+        </nav>
+
+        {appView === 'daily' ? (
+          <section className="screen-section">
+            <div className="section-header home-header">
+              <div>
+                <p className="eyebrow">Daily Tasks</p>
+                <h2>Today's Bucket</h2>
+              </div>
+              {dailyTasksLoading ? (
+                <span className="section-note">Refreshing daily tasks...</span>
+              ) : null}
+            </div>
+
+            {dailyMessages.length > 0 ? (
+              <div className="message-stack">
+                {dailyMessages.map((message, index) => (
+                  <p
+                    key={`${index}-${message}`}
+                    className="message-card error-message"
+                  >
+                    {message}
+                  </p>
+                ))}
+              </div>
+            ) : null}
+
+            {renderBulkActions()}
+
+            <section className="list-section daily-list-section">
+              {dailyTasks.length > 0 ? (
+                <ul className="task-list">
+                  {dailyTasks.map((task) =>
+                    renderTaskRow(task, {
+                      projectName: task.project_name,
+                    }),
+                  )}
+                </ul>
+              ) : (
+                <p className="empty-state">
+                  {dailyTasksLoading
+                    ? 'Loading your daily tasks...'
+                    : 'No tasks in Daily Tasks yet.'}
+                </p>
+              )}
+            </section>
+          </section>
+        ) : selectedProject ? (
           <section className="screen-section">
             <div className="section-header">
               <button
@@ -895,6 +1508,8 @@ function App() {
               </button>
             </form>
 
+            {renderBulkActions()}
+
             <section className="list-section">
               <div className="section-title-row">
                 <h3>Active Tasks</h3>
@@ -905,36 +1520,33 @@ function App() {
 
               {activeTasks.length > 0 ? (
                 <ul className="task-list">
-                  {activeTasks.map((task) => (
-                    <li key={task.id} className="task-item">
-                      <label className="task-toggle">
-                        <input
-                          type="checkbox"
-                          checked={task.completed}
-                          onChange={() => void handleToggleTask(task)}
-                          disabled={Boolean(configError) || taskSubmitting}
-                        />
-                        <span>{task.text}</span>
-                      </label>
-                      <button
-                        className="icon-button danger-button"
-                        type="button"
-                        onClick={() => void handleDeleteTask(task.id)}
-                        disabled={Boolean(configError) || taskSubmitting}
-                      >
-                        Delete
-                      </button>
-                    </li>
-                  ))}
+                  {activeTasks.map((task) =>
+                    renderTaskRow(task, { swipeToDaily: true }),
+                  )}
                 </ul>
               ) : (
                 <p className="empty-state">
                   {tasksLoading
                     ? 'Loading your tasks...'
-                    : completedTasks.length > 0
-                      ? 'No active tasks right now. Everything is tucked into Completed.'
+                    : projectDailyTasks.length > 0 || completedTasks.length > 0
+                      ? 'No active tasks right now.'
                       : 'No tasks yet. Add your first task above.'}
                 </p>
+              )}
+            </section>
+
+            <section className="list-section daily-project-section">
+              <div className="section-title-row">
+                <h3>Tasks on Daily Task</h3>
+                <span className="count-pill">{projectDailyTasks.length}</span>
+              </div>
+
+              {projectDailyTasks.length > 0 ? (
+                <ul className="task-list">
+                  {projectDailyTasks.map((task) => renderTaskRow(task))}
+                </ul>
+              ) : (
+                <p className="empty-state">No tasks from this project are in Daily.</p>
               )}
             </section>
 
@@ -952,27 +1564,9 @@ function App() {
               {showCompleted ? (
                 completedTasks.length > 0 ? (
                   <ul className="task-list completed-list">
-                    {completedTasks.map((task) => (
-                      <li key={task.id} className="task-item completed-task-item">
-                        <label className="task-toggle">
-                          <input
-                            type="checkbox"
-                            checked={task.completed}
-                            onChange={() => void handleToggleTask(task)}
-                            disabled={Boolean(configError) || taskSubmitting}
-                          />
-                          <span>{task.text}</span>
-                        </label>
-                        <button
-                          className="icon-button danger-button"
-                          type="button"
-                          onClick={() => void handleDeleteTask(task.id)}
-                          disabled={Boolean(configError) || taskSubmitting}
-                        >
-                          Delete
-                        </button>
-                      </li>
-                    ))}
+                    {completedTasks.map((task) =>
+                      renderTaskRow(task, { selectable: false }),
+                    )}
                   </ul>
                 ) : (
                   <p className="empty-state">No completed tasks yet.</p>

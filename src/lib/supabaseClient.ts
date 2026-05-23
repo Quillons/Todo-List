@@ -32,6 +32,8 @@ export type Task = {
   project_id: string
   text: string
   completed: boolean
+  is_daily: boolean
+  daily_added_at: string | null
   created_at: string | null
 }
 

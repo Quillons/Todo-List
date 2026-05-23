@@ -58,7 +58,8 @@ select {
 .project-edit-block,
 .list-section,
 .auth-form,
-.message-stack {
+.message-stack,
+.view-tabs {
   display: grid;
   gap: 0.75rem;
 }
@@ -156,7 +157,8 @@ input:focus {
 .icon-button,
 .project-menu-button,
 .choice-button,
-.completed-toggle {
+.completed-toggle,
+.view-tabs button {
   border: 0;
   border-radius: 0.85rem;
   padding: 0.95rem 1rem;
@@ -173,7 +175,9 @@ input:focus {
 .danger-button:disabled,
 .icon-button:disabled,
 .project-menu-button:disabled,
-.choice-button:disabled {
+.choice-button:disabled,
+.view-tabs button:disabled,
+.task-text-button:disabled {
   cursor: wait;
   opacity: 0.78;
 }
@@ -220,8 +224,32 @@ input:focus {
 .icon-button:active,
 .project-menu-button:active,
 .choice-button:active,
-.completed-toggle:active {
+.completed-toggle:active,
+.view-tabs button:active,
+.task-text-button:active {
   transform: translateY(1px);
+}
+
+.view-tabs {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding: 0.35rem;
+  border-radius: 1rem;
+  background: #edf3fb;
+}
+
+.view-tabs button {
+  min-width: 0;
+  background: transparent;
+  color: #1c345f;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.view-tabs button.is-selected {
+  background: #ffffff;
+  box-shadow: 0 6px 18px rgba(33, 51, 84, 0.12);
 }
 
 .button-row {
@@ -475,31 +503,144 @@ input:focus {
 }
 
 .task-item {
+  position: relative;
+  overflow: hidden;
+}
+
+.task-item-content {
+  position: relative;
+  z-index: 1;
+  min-height: 4.15rem;
   padding: 0.9rem 1rem;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.75rem;
-}
-
-.task-toggle {
-  display: flex;
-  align-items: center;
   gap: 0.85rem;
-  flex: 1;
-  min-width: 0;
-  cursor: pointer;
+  background: #ffffff;
+  transition: transform 160ms ease;
+  touch-action: pan-y;
 }
 
-.task-toggle input {
+.task-select {
   width: 1.2rem;
   height: 1.2rem;
   margin: 0;
+  padding: 0;
+  border-radius: 0.25rem;
   flex: 0 0 auto;
 }
 
-.task-toggle span {
+.task-text-button {
+  border: 0;
+  padding: 0.25rem 0;
+  background: transparent;
+  color: #172033;
+  text-align: left;
+  display: grid;
+  gap: 0.15rem;
+  flex: 1 1 auto;
+  min-width: 0;
+  cursor: pointer;
+  transition:
+    transform 120ms ease,
+    opacity 120ms ease;
+}
+
+.task-text-button span {
   word-break: break-word;
+}
+
+.task-text-button small {
+  color: #5d6c84;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.task-text-button:hover span {
+  text-decoration: underline;
+}
+
+.task-text-button:disabled {
+  cursor: default;
+}
+
+.task-text-button:disabled span {
+  text-decoration: none;
+}
+
+.task-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+}
+
+.swipe-action {
+  position: absolute;
+  inset: 0 0 0 auto;
+  z-index: 0;
+  width: 6.3rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #dff4e8;
+  color: #24623b;
+  font-weight: 800;
+}
+
+.daily-task-item {
+  border-color: #b9ddc8;
+}
+
+.daily-task-item .task-item-content {
+  background: #fbfffd;
+}
+
+.bulk-action-bar {
+  position: sticky;
+  top: 0.75rem;
+  z-index: 5;
+  padding: 0.7rem;
+  border: 1px solid #bdd2f5;
+  border-radius: 1rem;
+  background: rgba(248, 251, 255, 0.96);
+  box-shadow: 0 12px 30px rgba(33, 51, 84, 0.14);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.bulk-action-bar > span {
+  color: #1c345f;
+  font-weight: 800;
+}
+
+.bulk-action-buttons {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.bulk-action-buttons button {
+  padding: 0.65rem 0.8rem;
+}
+
+.daily-list-section,
+.daily-project-section {
+  background: #f8fdf9;
+}
+
+.icon-button.secondary-button {
+  background: #edf3fb;
+  color: #1c345f;
+}
+
+.icon-button.secondary-button:hover {
+  background: #dfeaf8;
 }
 
 .icon-button {
@@ -532,9 +673,38 @@ input:focus {
   margin-top: 0.8rem;
 }
 
-.completed-task-item .task-toggle span {
+.completed-task-item .task-text-button span {
   color: #6d7b92;
   text-decoration: line-through;
+}
+
+.completed-task-item .task-text-button:hover span {
+  text-decoration: line-through;
+}
+
+@media (max-width: 520px) {
+  .task-item-content {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+  }
+
+  .task-actions {
+    grid-column: 1 / -1;
+    justify-content: stretch;
+  }
+
+  .task-actions > * {
+    flex: 1 1 8rem;
+  }
+
+  .bulk-action-buttons {
+    width: 100%;
+  }
+
+  .bulk-action-buttons button {
+    flex: 1 1 8rem;
+  }
 }
 
 .empty-state {

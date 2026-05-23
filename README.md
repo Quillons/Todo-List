@@ -17,7 +17,9 @@ Small React + Vite + TypeScript task manager connected to Supabase. This version
 - Project cards on the home screen
 - Create, rename, and delete project categories
 - Open a project to see its task list
-- Add tasks, check tasks complete, and delete tasks
+- Add tasks, select tasks for bulk actions, complete tasks, and delete tasks
+- Move tasks into a top-level Daily Tasks bucket
+- Swipe active tasks left on mobile to send them to Daily Tasks
 - Completed tasks grouped into a collapsible section
 - Mobile-first layout with plain CSS
 
@@ -65,6 +67,8 @@ create table if not exists public.tasks (
   project_id uuid not null references public.projects(id) on delete cascade,
   text text not null,
   completed boolean not null default false,
+  is_daily boolean not null default false,
+  daily_added_at timestamptz,
   created_at timestamptz default now()
 );
 
@@ -79,6 +83,12 @@ add column if not exists card_color text;
 
 alter table public.projects
 add column if not exists card_icon text;
+
+alter table public.tasks
+add column if not exists is_daily boolean not null default false;
+
+alter table public.tasks
+add column if not exists daily_added_at timestamptz;
 
 do $$
 begin
@@ -255,7 +265,10 @@ The frontend still uses `VITE_SUPABASE_ANON_KEY`, which is normal for Supabase c
    - the project screen appears
    - you can create a project
    - you can open the project
-   - you can create, complete, uncomplete, and delete tasks
+   - you can create tasks
+   - clicking task text completes a task
+   - checking tasks selects them for bulk send-to-daily, complete, or delete actions
+   - moving a task to Daily removes it from Active Tasks and shows it in both Daily Tasks and Tasks on Daily Task
 7. Refresh the page and confirm the session persists.
 8. Sign out and confirm the app returns to the sign-in screen.
 
