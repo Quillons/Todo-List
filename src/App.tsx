@@ -49,7 +49,7 @@ type ChoiceStyle = CSSProperties & {
   '--choice-text': string
 }
 
-type AppView = 'projects' | 'daily'
+type AppView = 'projects' | 'daily' | 'grocery'
 
 type DailyTask = Task & {
   project_name: string
@@ -565,6 +565,7 @@ function App() {
   const [projects, setProjects] = useState<Project[]>([])
   const [tasks, setTasks] = useState<Task[]>([])
   const [dailyTasks, setDailyTasks] = useState<DailyTask[]>([])
+  const [groceryItems, setGroceryItems] = useState<Task[]>([])
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(
     null,
   )
@@ -587,15 +588,21 @@ function App() {
   const [editingProjectIcon, setEditingProjectIcon] =
     useState<ProjectCardIcon | null>(null)
   const [newTaskText, setNewTaskText] = useState('')
+  const [newGroceryItemText, setNewGroceryItemText] = useState('')
   const [showCompleted, setShowCompleted] = useState(false)
   const [projectsLoading, setProjectsLoading] = useState(false)
   const [tasksLoading, setTasksLoading] = useState(false)
   const [dailyTasksLoading, setDailyTasksLoading] = useState(false)
+  const [groceryItemsLoading, setGroceryItemsLoading] = useState(false)
   const [projectSubmitting, setProjectSubmitting] = useState(false)
   const [taskSubmitting, setTaskSubmitting] = useState(false)
+  const [grocerySubmitting, setGrocerySubmitting] = useState(false)
   const [projectsError, setProjectsError] = useState<string | null>(null)
   const [tasksError, setTasksError] = useState<string | null>(null)
   const [dailyTasksError, setDailyTasksError] = useState<string | null>(null)
+  const [groceryItemsError, setGroceryItemsError] = useState<string | null>(
+    null,
+  )
   const [projectActionError, setProjectActionError] = useState<string | null>(
     null,
   )
@@ -632,8 +639,12 @@ function App() {
     dailyTasksError,
     taskActionError,
   ].filter(Boolean) as string[]
+  const groceryMessages = [configError, groceryItemsError, taskActionError].filter(
+    Boolean,
+  ) as string[]
   const authMessages = [configError, authError].filter(Boolean) as string[]
   const isBusy = taskSubmitting || Boolean(configError)
+  const isGroceryBusy = grocerySubmitting || Boolean(configError)
 
   useEffect(() => {
     projectsRef.current = projects
@@ -652,6 +663,7 @@ function App() {
     setProjects([])
     setTasks([])
     setDailyTasks([])
+    setGroceryItems([])
     setSelectedProjectId(null)
     setSelectedTaskIds(new Set())
     setNewProjectName('')
@@ -660,6 +672,7 @@ function App() {
     setEditingProjectColor(null)
     setEditingProjectIcon(null)
     setNewTaskText('')
+    setNewGroceryItemText('')
     setShowCompleted(false)
     setDraggingProjectId(null)
     setDraggingTask(null)
@@ -669,13 +682,16 @@ function App() {
     setProjectsError(null)
     setTasksError(null)
     setDailyTasksError(null)
+    setGroceryItemsError(null)
     setProjectActionError(null)
     setTaskActionError(null)
     setProjectsLoading(false)
     setTasksLoading(false)
     setDailyTasksLoading(false)
+    setGroceryItemsLoading(false)
     setProjectSubmitting(false)
     setTaskSubmitting(false)
+    setGrocerySubmitting(false)
   }
 
   async function fetchProjects() {
@@ -762,6 +778,33 @@ function App() {
       setDailyTasksError(getErrorMessage(error))
     } finally {
       setDailyTasksLoading(false)
+    }
+  }
+
+  async function fetchGroceryItems() {
+    setGroceryItemsLoading(true)
+    setGroceryItemsError(null)
+
+    try {
+      const supabase = getSupabaseClient()
+      const { data, error } = await supabase
+        .from('tasks')
+        .select('*')
+        .is('project_id', null)
+        .eq('is_daily', false)
+        .eq('completed', false)
+        .order('sort_order', { ascending: true, nullsFirst: false })
+        .order('created_at', { ascending: true })
+
+      if (error) {
+        throw error
+      }
+
+      setGroceryItems(data ?? [])
+    } catch (error) {
+      setGroceryItemsError(getErrorMessage(error))
+    } finally {
+      setGroceryItemsLoading(false)
     }
   }
 
@@ -1184,11 +1227,13 @@ function App() {
     if (!session || configError) {
       setProjects([])
       setDailyTasks([])
+      setGroceryItems([])
       return
     }
 
     void fetchProjects()
     void fetchDailyTasks()
+    void fetchGroceryItems()
   }, [configError, session?.user.id])
 
   useEffect(() => {
@@ -1435,6 +1480,14 @@ function App() {
     void fetchDailyTasks()
   }
 
+  const handleShowGroceryList = () => {
+    setAppView('grocery')
+    setSelectedProjectId(null)
+    setTaskActionError(null)
+    setGroceryItemsError(null)
+    void fetchGroceryItems()
+  }
+
   const handleShowProjects = () => {
     setAppView('projects')
     setTaskActionError(null)
@@ -1496,6 +1549,109 @@ function App() {
       setTaskActionError(getErrorMessage(error))
     } finally {
       setTaskSubmitting(false)
+    }
+  }
+
+  const handleCreateGroceryItem = async (
+    event: FormEvent<HTMLFormElement>,
+  ) => {
+    event.preventDefault()
+
+    if (!session) {
+      setTaskActionError('You must be signed in to create a grocery item.')
+      return
+    }
+
+    const trimmedText = capitalizeFirstLetter(newGroceryItemText).trim()
+    if (!trimmedText) {
+      setTaskActionError('Grocery item text cannot be empty.')
+      return
+    }
+
+    setGrocerySubmitting(true)
+    setTaskActionError(null)
+
+    try {
+      const supabase = getSupabaseClient()
+      const { error } = await supabase.from('tasks').insert({
+        project_id: null,
+        user_id: session.user.id,
+        text: trimmedText,
+        is_daily: false,
+        completed: false,
+        daily_added_at: null,
+        sort_order: groceryItems.length,
+      })
+
+      if (error) {
+        throw error
+      }
+
+      setNewGroceryItemText('')
+      await fetchGroceryItems()
+    } catch (error) {
+      setTaskActionError(getErrorMessage(error))
+    } finally {
+      setGrocerySubmitting(false)
+    }
+  }
+
+  const handleCompleteGroceryItem = async (itemId: string) => {
+    if (!session) {
+      setTaskActionError('You must be signed in to complete a grocery item.')
+      return
+    }
+
+    setGrocerySubmitting(true)
+    setTaskActionError(null)
+
+    try {
+      const supabase = getSupabaseClient()
+      const { error } = await supabase.from('tasks').delete().eq('id', itemId)
+
+      if (error) {
+        throw error
+      }
+
+      await fetchGroceryItems()
+    } catch (error) {
+      setTaskActionError(getErrorMessage(error))
+    } finally {
+      setGrocerySubmitting(false)
+    }
+  }
+
+  const handleDeleteAllGroceryItems = async () => {
+    if (!session) {
+      setTaskActionError('You must be signed in to delete grocery items.')
+      return
+    }
+
+    if (groceryItems.length === 0) {
+      return
+    }
+
+    setGrocerySubmitting(true)
+    setTaskActionError(null)
+
+    try {
+      const supabase = getSupabaseClient()
+      const { error } = await supabase
+        .from('tasks')
+        .delete()
+        .is('project_id', null)
+        .eq('user_id', session.user.id)
+        .eq('is_daily', false)
+
+      if (error) {
+        throw error
+      }
+
+      await fetchGroceryItems()
+    } catch (error) {
+      setTaskActionError(getErrorMessage(error))
+    } finally {
+      setGrocerySubmitting(false)
     }
   }
 
@@ -1929,9 +2085,11 @@ function App() {
             <p className="intro">
               {appView === 'daily'
                 ? 'Review the tasks pulled into today from every project.'
-                : selectedProject
-                  ? 'Track the tasks for one project at a time.'
-                  : 'Manage your project categories and keep each task list tidy.'}
+                : appView === 'grocery'
+                  ? 'Keep a quick grocery list that clears items as you shop.'
+                  : selectedProject
+                    ? 'Track the tasks for one project at a time.'
+                    : 'Manage your project categories and keep each task list tidy.'}
             </p>
           </div>
           <div className="topbar-actions">
@@ -1966,6 +2124,15 @@ function App() {
           >
             Daily Tasks
             <span className="count-pill">{dailyTasks.length}</span>
+          </button>
+          <button
+            className={appView === 'grocery' ? 'is-selected' : ''}
+            type="button"
+            onClick={handleShowGroceryList}
+            aria-pressed={appView === 'grocery'}
+          >
+            Grocery List
+            <span className="count-pill">{groceryItems.length}</span>
           </button>
         </nav>
 
@@ -2033,6 +2200,91 @@ function App() {
                   {dailyTasksLoading
                     ? 'Loading your daily tasks...'
                     : 'No tasks in Daily Tasks yet.'}
+                </p>
+              )}
+            </section>
+          </section>
+        ) : appView === 'grocery' ? (
+          <section className="screen-section">
+            <div className="section-header home-header">
+              <div>
+                <p className="eyebrow">Grocery List</p>
+                <h2>Shopping Run</h2>
+              </div>
+              <div className="section-actions">
+                {groceryItemsLoading ? (
+                  <span className="section-note">Refreshing groceries...</span>
+                ) : null}
+                <button
+                  className="danger-button"
+                  type="button"
+                  onClick={() => void handleDeleteAllGroceryItems()}
+                  disabled={isGroceryBusy || groceryItems.length === 0}
+                >
+                  Delete All
+                </button>
+              </div>
+            </div>
+
+            {groceryMessages.length > 0 ? (
+              <div className="message-stack">
+                {groceryMessages.map((message, index) => (
+                  <p
+                    key={`${index}-${message}`}
+                    className="message-card error-message"
+                  >
+                    {message}
+                  </p>
+                ))}
+              </div>
+            ) : null}
+
+            <form className="inline-form" onSubmit={handleCreateGroceryItem}>
+              <label className="field-group">
+                <span className="field-label">New item</span>
+                <input
+                  type="text"
+                  value={newGroceryItemText}
+                  onChange={(event) =>
+                    setNewGroceryItemText(
+                      capitalizeFirstLetter(event.target.value),
+                    )
+                  }
+                  placeholder="Milk, eggs, apples..."
+                  disabled={isGroceryBusy}
+                />
+              </label>
+              <button
+                className="primary-button"
+                type="submit"
+                disabled={isGroceryBusy}
+              >
+                {grocerySubmitting ? 'Saving...' : 'Add Item'}
+              </button>
+            </form>
+
+            <section className="list-section grocery-list-section">
+              {groceryItems.length > 0 ? (
+                <ul className="grocery-list">
+                  {groceryItems.map((item) => (
+                    <li className="grocery-item" key={item.id}>
+                      <button
+                        className="grocery-item-button"
+                        type="button"
+                        onClick={() => void handleCompleteGroceryItem(item.id)}
+                        disabled={isGroceryBusy}
+                      >
+                        <span className="grocery-check" aria-hidden="true" />
+                        <span>{item.text}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="empty-state">
+                  {groceryItemsLoading
+                    ? 'Loading your grocery list...'
+                    : 'No grocery items yet.'}
                 </p>
               )}
             </section>

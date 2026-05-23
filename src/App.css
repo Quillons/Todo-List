@@ -116,6 +116,14 @@ h3 {
   justify-content: flex-start;
 }
 
+.section-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.7rem;
+  flex-wrap: wrap;
+}
+
 .session-note,
 .section-note {
   margin: 0;
@@ -231,7 +239,7 @@ input:focus {
 }
 
 .view-tabs {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   padding: 0.35rem;
   border-radius: 1rem;
   background: #edf3fb;
@@ -283,7 +291,8 @@ input:focus {
 }
 
 .project-grid,
-.task-list {
+.task-list,
+.grocery-list {
   margin: 0;
   padding: 0;
   list-style: none;
@@ -713,8 +722,66 @@ input:focus {
 }
 
 .daily-list-section,
-.daily-project-section {
+.daily-project-section,
+.grocery-list-section {
   background: #f8fdf9;
+}
+
+.grocery-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.grocery-item {
+  border: 1px solid #cbe2d5;
+  border-radius: 1rem;
+  background: #ffffff;
+  overflow: hidden;
+}
+
+.grocery-item-button {
+  width: 100%;
+  min-height: 4rem;
+  border: 0;
+  padding: 0.9rem 1rem;
+  background: #ffffff;
+  color: #172033;
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    transform 120ms ease,
+    opacity 120ms ease,
+    background 120ms ease;
+}
+
+.grocery-item-button:hover {
+  background: #fbfffd;
+}
+
+.grocery-item-button:active {
+  transform: translateY(1px);
+}
+
+.grocery-item-button:disabled {
+  cursor: wait;
+  opacity: 0.78;
+}
+
+.grocery-item-button span:last-child {
+  min-width: 0;
+  word-break: break-word;
+  font-weight: 700;
+}
+
+.grocery-check {
+  width: 1.35rem;
+  height: 1.35rem;
+  border: 2px solid #77b88d;
+  border-radius: 999px;
+  flex: 0 0 auto;
 }
 
 .icon-button.secondary-button {
@@ -766,6 +833,10 @@ input:focus {
 }
 
 @media (max-width: 520px) {
+  .view-tabs {
+    grid-template-columns: 1fr;
+  }
+
   .project-open-button,
   .project-open-button:hover,
   .project-card.has-project-color .project-open-button,
