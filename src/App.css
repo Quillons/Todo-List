@@ -762,6 +762,13 @@ input:focus {
 }
 
 @media (max-width: 520px) {
+  .project-open-button,
+  .project-open-button:hover,
+  .project-card.has-project-color .project-open-button,
+  .project-card.has-project-color .project-open-button:hover {
+    background: transparent;
+  }
+
   .task-item-content {
     display: grid;
     grid-template-columns: auto auto minmax(0, 1fr);
