@@ -20,6 +20,7 @@ Small React + Vite + TypeScript task manager connected to Supabase. This version
 - Add tasks, select tasks for bulk actions, complete tasks, and delete tasks
 - Move tasks into a top-level Daily Tasks bucket
 - Swipe active tasks left on mobile to send them to Daily Tasks
+- Swipe tasks right on mobile to delete them
 - Completed tasks grouped into a collapsible section
 - Mobile-first layout with plain CSS
 

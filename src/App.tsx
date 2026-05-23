@@ -280,7 +280,10 @@ function TaskRow({
 }) {
   const swipeStart = useRef<SwipeState | null>(null)
   const [swipeOffset, setSwipeOffset] = useState(0)
-  const canSwipe = swipeToDaily && !task.completed && !task.is_daily && !disabled
+  const canSwipeToDaily =
+    swipeToDaily && !task.completed && !task.is_daily && !disabled
+  const canSwipeToDelete = !disabled
+  const canSwipe = canSwipeToDaily || canSwipeToDelete
 
   const resetSwipe = () => {
     swipeStart.current = null
@@ -298,12 +301,17 @@ function TaskRow({
 
   return (
     <li className={rowClassName}>
-      {canSwipe ? <span className="swipe-action">Daily</span> : null}
+      {canSwipeToDelete ? (
+        <span className="swipe-action swipe-action-delete">Delete</span>
+      ) : null}
+      {canSwipeToDaily ? (
+        <span className="swipe-action swipe-action-daily">Daily</span>
+      ) : null}
       <div
         className="task-item-content"
         style={
           swipeOffset
-            ? { transform: `translateX(${-swipeOffset}px)` }
+            ? { transform: `translateX(${swipeOffset}px)` }
             : undefined
         }
         onPointerDown={(event) => {
@@ -332,8 +340,10 @@ function TaskRow({
             return
           }
 
-          if (deltaX < 0) {
-            setSwipeOffset(Math.min(Math.abs(deltaX), SWIPE_THRESHOLD + 28))
+          if (deltaX > 0 && canSwipeToDelete) {
+            setSwipeOffset(Math.min(deltaX, SWIPE_THRESHOLD + 28))
+          } else if (deltaX < 0 && canSwipeToDaily) {
+            setSwipeOffset(Math.max(deltaX, -(SWIPE_THRESHOLD + 28)))
           }
         }}
         onPointerCancel={resetSwipe}
@@ -343,6 +353,8 @@ function TaskRow({
           }
 
           if (swipeOffset >= SWIPE_THRESHOLD) {
+            onDelete(task.id)
+          } else if (swipeOffset <= -SWIPE_THRESHOLD) {
             onSendToDaily(task)
           }
 
@@ -368,8 +380,8 @@ function TaskRow({
           <span>{task.text}</span>
           {projectName ? <small>{projectName}</small> : null}
         </button>
-        <div className="task-actions">
-          {task.is_daily && !task.completed ? (
+        {task.is_daily && !task.completed ? (
+          <div className="task-actions">
             <button
               className="icon-button secondary-button"
               type="button"
@@ -378,16 +390,8 @@ function TaskRow({
             >
               Remove Daily
             </button>
-          ) : null}
-          <button
-            className="icon-button danger-button"
-            type="button"
-            onClick={() => onDelete(task.id)}
-            disabled={disabled}
-          >
-            Delete
-          </button>
-        </div>
+          </div>
+        ) : null}
       </div>
     </li>
   )
@@ -1233,6 +1237,7 @@ function App() {
     const canSendToDaily = selectedTasks.some(
       (task) => !task.completed && !task.is_daily,
     )
+    const canComplete = selectedTasks.some((task) => !task.completed)
 
     return (
       <div className="bulk-action-bar" role="region" aria-label="Selected tasks">
@@ -1250,7 +1255,7 @@ function App() {
             className="primary-button"
             type="button"
             onClick={() => void handleBulkComplete()}
-            disabled={isBusy}
+            disabled={isBusy || !canComplete}
           >
             Complete
           </button>
@@ -1565,7 +1570,7 @@ function App() {
                 completedTasks.length > 0 ? (
                   <ul className="task-list completed-list">
                     {completedTasks.map((task) =>
-                      renderTaskRow(task, { selectable: false }),
+                      renderTaskRow(task, { selectable: true }),
                     )}
                   </ul>
                 ) : (

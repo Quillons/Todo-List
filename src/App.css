@@ -579,15 +579,25 @@ input:focus {
 
 .swipe-action {
   position: absolute;
-  inset: 0 0 0 auto;
+  inset-block: 0;
   z-index: 0;
   width: 6.3rem;
   display: flex;
   align-items: center;
   justify-content: center;
+  font-weight: 800;
+}
+
+.swipe-action-delete {
+  inset-inline-start: 0;
+  background: #ffe2e0;
+  color: #972f2a;
+}
+
+.swipe-action-daily {
+  inset-inline-end: 0;
   background: #dff4e8;
   color: #24623b;
-  font-weight: 800;
 }
 
 .daily-task-item {
