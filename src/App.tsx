@@ -246,10 +246,10 @@ function getChoiceStyle(color: ProjectCardColor | null) {
 
 function getDailyProjectName(row: DailyTaskResponse) {
   if (Array.isArray(row.projects)) {
-    return row.projects[0]?.name ?? 'Unknown project'
+    return row.projects[0]?.name ?? ''
   }
 
-  return row.projects?.name ?? 'Unknown project'
+  return row.projects?.name ?? ''
 }
 
 function ProjectIconSvg({
@@ -536,7 +536,7 @@ function TaskRow({
           <span>{task.text}</span>
           {projectName ? <small>{projectName}</small> : null}
         </button>
-        {task.is_daily && !task.completed ? (
+        {task.is_daily && !task.completed && task.project_id ? (
           <div className="task-actions">
             <button
               className="icon-button secondary-button"
@@ -1448,7 +1448,9 @@ function App() {
       return
     }
 
-    if (!selectedProjectId) {
+    const isDailyTask = appView === 'daily' && !selectedProjectId
+
+    if (!selectedProjectId && !isDailyTask) {
       return
     }
 
@@ -1463,18 +1465,33 @@ function App() {
 
     try {
       const supabase = getSupabaseClient()
-      const { error } = await supabase.from('tasks').insert({
-        project_id: selectedProjectId,
-        text: trimmedText,
-        sort_order: tasks.length,
-      })
+      const { error } = await supabase.from('tasks').insert(
+        isDailyTask
+          ? {
+              project_id: null,
+              user_id: session.user.id,
+              text: trimmedText,
+              is_daily: true,
+              daily_added_at: new Date().toISOString(),
+              sort_order: dailyTasks.length,
+            }
+          : {
+              project_id: selectedProjectId,
+              text: trimmedText,
+              sort_order: tasks.length,
+            },
+      )
 
       if (error) {
         throw error
       }
 
       setNewTaskText('')
-      await fetchTasks(selectedProjectId)
+      if (isDailyTask) {
+        await fetchDailyTasks()
+      } else if (selectedProjectId) {
+        await fetchTasks(selectedProjectId)
+      }
     } catch (error) {
       setTaskActionError(getErrorMessage(error))
     } finally {
@@ -1976,6 +1993,28 @@ function App() {
                 ))}
               </div>
             ) : null}
+
+            <form className="inline-form" onSubmit={handleCreateTask}>
+              <label className="field-group">
+                <span className="field-label">New task</span>
+                <input
+                  type="text"
+                  value={newTaskText}
+                  onChange={(event) =>
+                    setNewTaskText(capitalizeFirstLetter(event.target.value))
+                  }
+                  placeholder="Add a daily task"
+                  disabled={Boolean(configError) || taskSubmitting}
+                />
+              </label>
+              <button
+                className="primary-button"
+                type="submit"
+                disabled={Boolean(configError) || taskSubmitting}
+              >
+                {taskSubmitting ? 'Saving...' : 'Add Task'}
+              </button>
+            </form>
 
             {renderBulkActions()}
 

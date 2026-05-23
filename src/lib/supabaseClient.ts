@@ -30,7 +30,8 @@ export type Project = {
 
 export type Task = {
   id: string
-  project_id: string
+  project_id: string | null
+  user_id: string | null
   text: string
   completed: boolean
   is_daily: boolean

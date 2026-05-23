@@ -67,7 +67,8 @@ create table if not exists public.projects (
 
 create table if not exists public.tasks (
   id uuid primary key default gen_random_uuid(),
-  project_id uuid not null references public.projects(id) on delete cascade,
+  project_id uuid references public.projects(id) on delete cascade,
+  user_id uuid references auth.users(id) on delete cascade,
   text text not null,
   completed boolean not null default false,
   is_daily boolean not null default false,
@@ -99,6 +100,18 @@ add column if not exists daily_added_at timestamptz;
 
 alter table public.tasks
 add column if not exists sort_order integer;
+
+alter table public.tasks
+add column if not exists user_id uuid references auth.users(id) on delete cascade;
+
+alter table public.tasks
+alter column project_id drop not null;
+
+update public.tasks
+set user_id = projects.user_id
+from public.projects
+where tasks.project_id = projects.id
+  and tasks.user_id is null;
 
 with ordered_projects as (
   select
@@ -214,6 +227,8 @@ on public.tasks
 for select
 to authenticated
 using (
+  user_id = auth.uid()
+  or
   exists (
     select 1
     from public.projects
@@ -227,6 +242,8 @@ on public.tasks
 for insert
 to authenticated
 with check (
+  user_id = auth.uid()
+  or
   exists (
     select 1
     from public.projects
@@ -240,6 +257,8 @@ on public.tasks
 for update
 to authenticated
 using (
+  user_id = auth.uid()
+  or
   exists (
     select 1
     from public.projects
@@ -248,6 +267,8 @@ using (
   )
 )
 with check (
+  user_id = auth.uid()
+  or
   exists (
     select 1
     from public.projects
@@ -261,6 +282,8 @@ on public.tasks
 for delete
 to authenticated
 using (
+  user_id = auth.uid()
+  or
   exists (
     select 1
     from public.projects
@@ -270,7 +293,7 @@ using (
 );
 ```
 
-If you already ran an earlier migration and want to keep your existing data, run just the `sort_order` parts from the block above: add `sort_order` to `projects` and `tasks`, then run the two `with ordered_... update ...` backfill statements.
+If you already ran an earlier migration and want to keep your existing data, run the `tasks.user_id`, `project_id drop not null`, `sort_order`, and policy updates from the block above without the two `delete from` statements.
 
 ## Manually create your user in Supabase
 
