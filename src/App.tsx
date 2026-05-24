@@ -13,7 +13,7 @@ import {
   type ProjectCardIcon,
   type Project,
   type Task,
-  type TaskEffort,
+  type TaskExpectedTime,
   type TaskRepeatType,
 } from './lib/supabaseClient'
 
@@ -51,7 +51,7 @@ type ChoiceStyle = CSSProperties & {
   '--choice-text': string
 }
 
-type AppView = 'projects' | 'daily' | 'grocery'
+type AppView = 'projects' | 'daily' | 'grocery' | 'pick'
 
 type DailyTask = Task & {
   project_name: string
@@ -60,6 +60,12 @@ type DailyTask = Task & {
 type DailyTaskResponse = Task & {
   projects?: { name: string } | Array<{ name: string }> | null
 }
+
+type PickerTask = Task & {
+  project_name: string
+}
+
+type PickerTaskResponse = DailyTaskResponse
 
 type SwipeState = {
   x: number
@@ -97,8 +103,8 @@ const TASK_REPEAT_OPTIONS: Array<{
   { value: 'yearly', label: 'Yearly' },
 ]
 
-const TASK_EFFORT_OPTIONS: Array<{
-  value: TaskEffort | ''
+const TASK_EXPECTED_TIME_OPTIONS: Array<{
+  value: TaskExpectedTime | ''
   label: string
 }> = [
   { value: '', label: 'No estimate' },
@@ -106,6 +112,31 @@ const TASK_EFFORT_OPTIONS: Array<{
   { value: '15_minutes', label: '15 minutes' },
   { value: '30_minutes', label: '30 minutes' },
   { value: '1_hour_plus', label: '1+ hour' },
+]
+
+const PHYSICAL_ENERGY_OPTIONS = [
+  { value: 1, label: 'Blanket Burrito' },
+  { value: 2, label: 'House Cat' },
+  { value: 3, label: 'Errand Capable' },
+  { value: 4, label: 'Borderline Athletic' },
+  { value: 5, label: 'Laborador Retriever' },
+]
+
+const MENTAL_ENERGY_OPTIONS = [
+  { value: 1, label: 'Everything Sounds Hard' },
+  { value: 2, label: 'Depends on How Annoying It Is' },
+  { value: 3, label: 'Momentum Possible' },
+  { value: 4, label: "Let's Do Things" },
+  { value: 5, label: 'Fully Activated' },
+]
+
+const TASK_REQUIREMENT_OPTIONS = [
+  { value: '', label: 'Not assigned' },
+  { value: '1', label: '1' },
+  { value: '2', label: '2' },
+  { value: '3', label: '3' },
+  { value: '4', label: '4' },
+  { value: '5', label: '5' },
 ]
 
 function getLocalDateKey(date = new Date()) {
@@ -215,6 +246,21 @@ function getRepeatLabel(repeatType: TaskRepeatType) {
     TASK_REPEAT_OPTIONS.find((option) => option.value === repeatType)?.label ??
     'Does not repeat'
   )
+}
+
+function getEnergyLabel(
+  options: Array<{ value: number; label: string }>,
+  value: number,
+) {
+  return options.find((option) => option.value === value)?.label ?? `${value}`
+}
+
+function getTaskRequirement(value: number | null) {
+  return value ?? 3
+}
+
+function getProjectName(row: DailyTaskResponse) {
+  return getDailyProjectName(row) || 'Daily Tasks'
 }
 
 function formatDateLabel(dateKey: string) {
@@ -524,8 +570,10 @@ function TaskRow({
   editRepeatType,
   editRepeatStartDate,
   editDeadlineDate,
-  editEffort,
+  editExpectedTime,
   editShopping,
+  editMentalEffort,
+  editPhysicalEffort,
   isDragging,
   disabled,
   onSelectChange,
@@ -540,8 +588,10 @@ function TaskRow({
   onEditRepeatTypeChange,
   onEditRepeatStartDateChange,
   onEditDeadlineDateChange,
-  onEditEffortChange,
+  onEditExpectedTimeChange,
   onEditShoppingChange,
+  onEditMentalEffortChange,
+  onEditPhysicalEffortChange,
   onReorderDragStart,
   onReorderDragEnter,
   onReorderDragEnd,
@@ -557,8 +607,10 @@ function TaskRow({
   editRepeatType: TaskRepeatType
   editRepeatStartDate: string
   editDeadlineDate: string
-  editEffort: TaskEffort | ''
+  editExpectedTime: TaskExpectedTime | ''
   editShopping: boolean
+  editMentalEffort: string
+  editPhysicalEffort: string
   isDragging: boolean
   disabled: boolean
   onSelectChange: (taskId: string, selected: boolean) => void
@@ -573,8 +625,10 @@ function TaskRow({
   onEditRepeatTypeChange: (value: TaskRepeatType) => void
   onEditRepeatStartDateChange: (value: string) => void
   onEditDeadlineDateChange: (value: string) => void
-  onEditEffortChange: (value: TaskEffort | '') => void
+  onEditExpectedTimeChange: (value: TaskExpectedTime | '') => void
   onEditShoppingChange: (value: boolean) => void
+  onEditMentalEffortChange: (value: string) => void
+  onEditPhysicalEffortChange: (value: string) => void
   onReorderDragStart: (taskId: string, group: TaskReorderGroup) => void
   onReorderDragEnter: (taskId: string, group: TaskReorderGroup) => void
   onReorderDragEnd: () => void
@@ -826,15 +880,49 @@ function TaskRow({
             />
           </label>
           <label className="field-group">
-            <span className="field-label">Effort</span>
+            <span className="field-label">Expected Time</span>
             <select
-              value={editEffort}
+              value={editExpectedTime}
               onChange={(event) =>
-                onEditEffortChange(event.target.value as TaskEffort | '')
+                onEditExpectedTimeChange(
+                  event.target.value as TaskExpectedTime | '',
+                )
               }
               disabled={disabled}
             >
-              {TASK_EFFORT_OPTIONS.map((option) => (
+              {TASK_EXPECTED_TIME_OPTIONS.map((option) => (
+                <option value={option.value} key={option.value || 'none'}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="field-group">
+            <span className="field-label">Mental effort</span>
+            <select
+              value={editMentalEffort}
+              onChange={(event) =>
+                onEditMentalEffortChange(event.target.value)
+              }
+              disabled={disabled}
+            >
+              {TASK_REQUIREMENT_OPTIONS.map((option) => (
+                <option value={option.value} key={option.value || 'none'}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="field-group">
+            <span className="field-label">Physical effort</span>
+            <select
+              value={editPhysicalEffort}
+              onChange={(event) =>
+                onEditPhysicalEffortChange(event.target.value)
+              }
+              disabled={disabled}
+            >
+              {TASK_REQUIREMENT_OPTIONS.map((option) => (
                 <option value={option.value} key={option.value || 'none'}>
                   {option.label}
                 </option>
@@ -911,8 +999,12 @@ function App() {
     getLocalDateKey,
   )
   const [newTaskDeadlineDate, setNewTaskDeadlineDate] = useState('')
-  const [newTaskEffort, setNewTaskEffort] = useState<TaskEffort | ''>('')
+  const [newTaskExpectedTime, setNewTaskExpectedTime] = useState<
+    TaskExpectedTime | ''
+  >('')
   const [newTaskShopping, setNewTaskShopping] = useState(false)
+  const [newTaskMentalEffort, setNewTaskMentalEffort] = useState('')
+  const [newTaskPhysicalEffort, setNewTaskPhysicalEffort] = useState('')
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null)
   const [editingTaskText, setEditingTaskText] = useState('')
   const [editingTaskRepeatType, setEditingTaskRepeatType] =
@@ -920,10 +1012,17 @@ function App() {
   const [editingTaskRepeatStartDate, setEditingTaskRepeatStartDate] =
     useState(getLocalDateKey)
   const [editingTaskDeadlineDate, setEditingTaskDeadlineDate] = useState('')
-  const [editingTaskEffort, setEditingTaskEffort] = useState<TaskEffort | ''>(
-    '',
-  )
+  const [editingTaskExpectedTime, setEditingTaskExpectedTime] = useState<
+    TaskExpectedTime | ''
+  >('')
   const [editingTaskShopping, setEditingTaskShopping] = useState(false)
+  const [editingTaskMentalEffort, setEditingTaskMentalEffort] = useState('')
+  const [editingTaskPhysicalEffort, setEditingTaskPhysicalEffort] = useState('')
+  const [pickerMentalEnergy, setPickerMentalEnergy] = useState(3)
+  const [pickerPhysicalEnergy, setPickerPhysicalEnergy] = useState(3)
+  const [pickedTask, setPickedTask] = useState<PickerTask | null>(null)
+  const [pickerLoading, setPickerLoading] = useState(false)
+  const [pickerError, setPickerError] = useState<string | null>(null)
   const [newGroceryItemText, setNewGroceryItemText] = useState('')
   const [showCompleted, setShowCompleted] = useState(false)
   const [projectsLoading, setProjectsLoading] = useState(false)
@@ -978,6 +1077,7 @@ function App() {
   const groceryMessages = [configError, groceryItemsError, taskActionError].filter(
     Boolean,
   ) as string[]
+  const pickerMessages = [configError, pickerError].filter(Boolean) as string[]
   const authMessages = [configError, authError].filter(Boolean) as string[]
   const isBusy = taskSubmitting || Boolean(configError)
   const isGroceryBusy = grocerySubmitting || Boolean(configError)
@@ -1000,8 +1100,10 @@ function App() {
     setNewTaskRepeatType('none')
     setNewTaskRepeatStartDate(getLocalDateKey())
     setNewTaskDeadlineDate('')
-    setNewTaskEffort('')
+    setNewTaskExpectedTime('')
     setNewTaskShopping(false)
+    setNewTaskMentalEffort('')
+    setNewTaskPhysicalEffort('')
   }
 
   function clearAppState() {
@@ -1023,8 +1125,13 @@ function App() {
     setEditingTaskRepeatType('none')
     setEditingTaskRepeatStartDate(getLocalDateKey())
     setEditingTaskDeadlineDate('')
-    setEditingTaskEffort('')
+    setEditingTaskExpectedTime('')
     setEditingTaskShopping(false)
+    setEditingTaskMentalEffort('')
+    setEditingTaskPhysicalEffort('')
+    setPickedTask(null)
+    setPickerError(null)
+    setPickerLoading(false)
     setNewGroceryItemText('')
     setShowCompleted(false)
     setDraggingProjectId(null)
@@ -1185,6 +1292,122 @@ function App() {
       setGroceryItemsError(getErrorMessage(error))
     } finally {
       setGroceryItemsLoading(false)
+    }
+  }
+
+  function choosePickerTask(
+    candidates: PickerTask[],
+    currentTaskId: string | null,
+  ) {
+    const selectableCandidates =
+      currentTaskId && candidates.length > 1
+        ? candidates.filter((task) => task.id !== currentTaskId)
+        : candidates
+
+    if (selectableCandidates.length === 0) {
+      return null
+    }
+
+    const scoredCandidates = selectableCandidates.map((task) => ({
+      task,
+      score:
+        Math.abs(getTaskRequirement(task.mental_effort) - pickerMentalEnergy) +
+        Math.abs(
+          getTaskRequirement(task.physical_effort) - pickerPhysicalEnergy,
+        ),
+    }))
+    const bestScore = Math.min(
+      ...scoredCandidates.map((candidate) => candidate.score),
+    )
+    const bestCandidates = scoredCandidates
+      .filter((candidate) => candidate.score === bestScore)
+      .map((candidate) => candidate.task)
+
+    return bestCandidates[Math.floor(Math.random() * bestCandidates.length)]
+  }
+
+  async function handlePickTask() {
+    if (!session) {
+      setPickerError('You must be signed in to pick a task.')
+      return
+    }
+
+    setPickerLoading(true)
+    setPickerError(null)
+
+    try {
+      const supabase = getSupabaseClient()
+      const todayKey = getLocalDateKey()
+      const { data, error } = await supabase
+        .from('tasks')
+        .select('*, projects(name)')
+        .eq('completed', false)
+        .order('created_at', { ascending: true })
+
+      if (error) {
+        throw error
+      }
+
+      const rows = (data ?? []) as PickerTaskResponse[]
+      const repeatingTaskIds = rows
+        .filter((row) => isRecurringTask(row))
+        .map((row) => row.id)
+      let completedRepeatTaskIds = new Set<string>()
+
+      if (repeatingTaskIds.length > 0) {
+        const { data: completionData, error: completionError } = await supabase
+          .from('task_occurrence_completions')
+          .select('task_id')
+          .eq('occurrence_date', todayKey)
+          .in('task_id', repeatingTaskIds)
+
+        if (completionError) {
+          throw completionError
+        }
+
+        completedRepeatTaskIds = new Set(
+          (completionData ?? []).map((completion) => completion.task_id),
+        )
+      }
+
+      const candidates = rows
+        .filter((row) => !Boolean(row.shopping))
+        .filter(
+          (row) =>
+            row.project_id !== null ||
+            row.is_daily ||
+            isTaskDueBy(row, todayKey) ||
+            doesTaskRepeatOn(row, todayKey),
+        )
+        .filter((row) => {
+          if (!isRecurringTask(row)) {
+            return true
+          }
+
+          return !completedRepeatTaskIds.has(row.id)
+        })
+        .map((row) => {
+          const { projects: _projects, ...task } = row
+
+          return {
+            ...task,
+            project_name: getProjectName(row),
+          }
+        })
+
+      const nextTask = choosePickerTask(candidates, pickedTask?.id ?? null)
+
+      if (!nextTask) {
+        setPickedTask(null)
+        setPickerError('No matching non-shopping tasks are available.')
+        return
+      }
+
+      setPickedTask(nextTask)
+    } catch (error) {
+      setPickerError(getErrorMessage(error))
+    } finally {
+      setPickerLoading(false)
     }
   }
 
@@ -1877,6 +2100,14 @@ function App() {
     void fetchGroceryItems()
   }
 
+  const handleShowPickForMe = () => {
+    setAppView('pick')
+    setSelectedProjectId(null)
+    resetNewTaskForm()
+    setTaskActionError(null)
+    setPickerError(null)
+  }
+
   const handleShowProjects = () => {
     setAppView('projects')
     resetNewTaskForm()
@@ -1887,16 +2118,20 @@ function App() {
     repeatType: TaskRepeatType,
     repeatStartDate: string,
     deadlineDate: string,
-    effort: TaskEffort | '',
+    expectedTime: TaskExpectedTime | '',
     shopping: boolean,
+    mentalEffort: string,
+    physicalEffort: string,
   ) {
     return {
       repeat_type: repeatType,
       repeat_start_date:
         repeatType === 'none' ? null : repeatStartDate || getLocalDateKey(),
       deadline_date: deadlineDate || null,
-      effort: effort || null,
+      expected_time: expectedTime || null,
       shopping,
+      mental_effort: mentalEffort ? Number(mentalEffort) : null,
+      physical_effort: physicalEffort ? Number(physicalEffort) : null,
     }
   }
 
@@ -1914,8 +2149,14 @@ function App() {
     setEditingTaskRepeatType(getTaskRepeatType(task))
     setEditingTaskRepeatStartDate(task.repeat_start_date ?? getLocalDateKey())
     setEditingTaskDeadlineDate(task.deadline_date ?? '')
-    setEditingTaskEffort(task.effort ?? '')
+    setEditingTaskExpectedTime(task.expected_time ?? '')
     setEditingTaskShopping(Boolean(task.shopping))
+    setEditingTaskMentalEffort(
+      task.mental_effort ? String(task.mental_effort) : '',
+    )
+    setEditingTaskPhysicalEffort(
+      task.physical_effort ? String(task.physical_effort) : '',
+    )
     setTaskActionError(null)
   }
 
@@ -1966,8 +2207,10 @@ function App() {
             editingTaskRepeatType,
             editingTaskRepeatStartDate,
             editingTaskDeadlineDate,
-            editingTaskEffort,
+            editingTaskExpectedTime,
             editingTaskShopping,
+            editingTaskMentalEffort,
+            editingTaskPhysicalEffort,
           ),
         })
         .eq('id', task.id)
@@ -2019,8 +2262,10 @@ function App() {
         newTaskRepeatType,
         newTaskRepeatStartDate,
         newTaskDeadlineDate,
-        newTaskEffort,
+        newTaskExpectedTime,
         newTaskShopping,
+        newTaskMentalEffort,
+        newTaskPhysicalEffort,
       )
       const { error } = await supabase.from('tasks').insert(
         isDailyTask
@@ -2552,8 +2797,10 @@ function App() {
       editRepeatType={editingTaskRepeatType}
       editRepeatStartDate={editingTaskRepeatStartDate}
       editDeadlineDate={editingTaskDeadlineDate}
-      editEffort={editingTaskEffort}
+      editExpectedTime={editingTaskExpectedTime}
       editShopping={editingTaskShopping}
+      editMentalEffort={editingTaskMentalEffort}
+      editPhysicalEffort={editingTaskPhysicalEffort}
       isDragging={draggingTask?.id === task.id}
       disabled={isBusy}
       onSelectChange={handleSelectTask}
@@ -2568,8 +2815,10 @@ function App() {
       onEditRepeatTypeChange={handleEditingTaskRepeatTypeChange}
       onEditRepeatStartDateChange={setEditingTaskRepeatStartDate}
       onEditDeadlineDateChange={setEditingTaskDeadlineDate}
-      onEditEffortChange={setEditingTaskEffort}
+      onEditExpectedTimeChange={setEditingTaskExpectedTime}
       onEditShoppingChange={setEditingTaskShopping}
+      onEditMentalEffortChange={setEditingTaskMentalEffort}
+      onEditPhysicalEffortChange={setEditingTaskPhysicalEffort}
       onReorderDragStart={handleTaskDragStart}
       onReorderDragEnter={handleTaskDragEnter}
       onReorderDragEnd={handleTaskDragEnd}
@@ -2661,9 +2910,11 @@ function App() {
                 ? 'Review the tasks pulled into today from every project.'
                 : appView === 'grocery'
                   ? 'Keep a quick grocery list that clears items as you shop.'
-                  : selectedProject
-                    ? 'Track the tasks for one project at a time.'
-                    : 'Manage your project categories and keep each task list tidy.'}
+                  : appView === 'pick'
+                    ? 'Match a task to the energy you have right now.'
+                    : selectedProject
+                      ? 'Track the tasks for one project at a time.'
+                      : 'Manage your project categories and keep each task list tidy.'}
             </p>
           </div>
           <div className="topbar-actions">
@@ -2707,6 +2958,14 @@ function App() {
           >
             Grocery List
             <span className="count-pill">{groceryItems.length}</span>
+          </button>
+          <button
+            className={appView === 'pick' ? 'is-selected' : ''}
+            type="button"
+            onClick={handleShowPickForMe}
+            aria-pressed={appView === 'pick'}
+          >
+            Pick for Me
           </button>
         </nav>
 
@@ -2798,15 +3057,49 @@ function App() {
                   />
                 </label>
                 <label className="field-group">
-                  <span className="field-label">Effort</span>
+                  <span className="field-label">Expected Time</span>
                   <select
-                    value={newTaskEffort}
+                    value={newTaskExpectedTime}
                     onChange={(event) =>
-                      setNewTaskEffort(event.target.value as TaskEffort | '')
+                      setNewTaskExpectedTime(
+                        event.target.value as TaskExpectedTime | '',
+                      )
                     }
                     disabled={Boolean(configError) || taskSubmitting}
                   >
-                    {TASK_EFFORT_OPTIONS.map((option) => (
+                    {TASK_EXPECTED_TIME_OPTIONS.map((option) => (
+                      <option value={option.value} key={option.value || 'none'}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="field-group">
+                  <span className="field-label">Mental effort</span>
+                  <select
+                    value={newTaskMentalEffort}
+                    onChange={(event) =>
+                      setNewTaskMentalEffort(event.target.value)
+                    }
+                    disabled={Boolean(configError) || taskSubmitting}
+                  >
+                    {TASK_REQUIREMENT_OPTIONS.map((option) => (
+                      <option value={option.value} key={option.value || 'none'}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="field-group">
+                  <span className="field-label">Physical effort</span>
+                  <select
+                    value={newTaskPhysicalEffort}
+                    onChange={(event) =>
+                      setNewTaskPhysicalEffort(event.target.value)
+                    }
+                    disabled={Boolean(configError) || taskSubmitting}
+                  >
+                    {TASK_REQUIREMENT_OPTIONS.map((option) => (
                       <option value={option.value} key={option.value || 'none'}>
                         {option.label}
                       </option>
@@ -2872,6 +3165,124 @@ function App() {
                     : 'No tasks in Daily Tasks yet.'}
                 </p>
               )}
+            </section>
+          </section>
+        ) : appView === 'pick' ? (
+          <section className="screen-section pick-screen-section">
+            <div className="section-header home-header">
+              <div>
+                <p className="eyebrow">Pick for Me</p>
+                <h2>Current Energy</h2>
+              </div>
+              {pickerLoading ? (
+                <span className="section-note">Finding a task...</span>
+              ) : null}
+            </div>
+
+            {pickerMessages.length > 0 ? (
+              <div className="message-stack">
+                {pickerMessages.map((message, index) => (
+                  <p
+                    key={`${index}-${message}`}
+                    className="message-card error-message"
+                  >
+                    {message}
+                  </p>
+                ))}
+              </div>
+            ) : null}
+
+            <section className="picker-controls">
+              <fieldset className="picker-energy-group">
+                <legend className="field-label">Mental energy</legend>
+                <div className="picker-energy-options">
+                  {MENTAL_ENERGY_OPTIONS.map((option) => (
+                    <button
+                      className={`picker-energy-button${
+                        pickerMentalEnergy === option.value ? ' is-selected' : ''
+                      }`}
+                      type="button"
+                      key={option.value}
+                      onClick={() => setPickerMentalEnergy(option.value)}
+                      disabled={pickerLoading}
+                      aria-pressed={pickerMentalEnergy === option.value}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </fieldset>
+              <fieldset className="picker-energy-group">
+                <legend className="field-label">Physical energy</legend>
+                <div className="picker-energy-options">
+                  {PHYSICAL_ENERGY_OPTIONS.map((option) => (
+                    <button
+                      className={`picker-energy-button${
+                        pickerPhysicalEnergy === option.value ? ' is-selected' : ''
+                      }`}
+                      type="button"
+                      key={option.value}
+                      onClick={() => setPickerPhysicalEnergy(option.value)}
+                      disabled={pickerLoading}
+                      aria-pressed={pickerPhysicalEnergy === option.value}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </fieldset>
+            </section>
+
+            <section className="list-section picker-result-section">
+              {pickedTask ? (
+                <article className="picker-task-card">
+                  <div>
+                    <p className="eyebrow">Recommended</p>
+                    <h3>{pickedTask.text}</h3>
+                    <p className="section-note">{pickedTask.project_name}</p>
+                    <TaskMetaBadges task={pickedTask} />
+                  </div>
+                  <div className="picker-task-details">
+                    <span>
+                      Mental:{' '}
+                      {getEnergyLabel(
+                        MENTAL_ENERGY_OPTIONS,
+                        getTaskRequirement(pickedTask.mental_effort),
+                      )}
+                    </span>
+                    <span>
+                      Physical:{' '}
+                      {getEnergyLabel(
+                        PHYSICAL_ENERGY_OPTIONS,
+                        getTaskRequirement(pickedTask.physical_effort),
+                      )}
+                    </span>
+                  </div>
+                </article>
+              ) : (
+                <p className="empty-state">No task picked yet.</p>
+              )}
+              <div className="button-row picker-actions">
+                <button
+                  className="primary-button"
+                  type="button"
+                  onClick={() => void handlePickTask()}
+                  disabled={pickerLoading || Boolean(configError)}
+                >
+                  {pickedTask ? 'Refresh' : 'Pick Task'}
+                </button>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  onClick={() => {
+                    setPickedTask(null)
+                    setPickerError(null)
+                  }}
+                  disabled={pickerLoading || !pickedTask}
+                >
+                  Clear Task
+                </button>
+              </div>
             </section>
           </section>
         ) : appView === 'grocery' ? (
@@ -3051,15 +3462,49 @@ function App() {
                   />
                 </label>
                 <label className="field-group">
-                  <span className="field-label">Effort</span>
+                  <span className="field-label">Expected Time</span>
                   <select
-                    value={newTaskEffort}
+                    value={newTaskExpectedTime}
                     onChange={(event) =>
-                      setNewTaskEffort(event.target.value as TaskEffort | '')
+                      setNewTaskExpectedTime(
+                        event.target.value as TaskExpectedTime | '',
+                      )
                     }
                     disabled={Boolean(configError) || taskSubmitting}
                   >
-                    {TASK_EFFORT_OPTIONS.map((option) => (
+                    {TASK_EXPECTED_TIME_OPTIONS.map((option) => (
+                      <option value={option.value} key={option.value || 'none'}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="field-group">
+                  <span className="field-label">Mental effort</span>
+                  <select
+                    value={newTaskMentalEffort}
+                    onChange={(event) =>
+                      setNewTaskMentalEffort(event.target.value)
+                    }
+                    disabled={Boolean(configError) || taskSubmitting}
+                  >
+                    {TASK_REQUIREMENT_OPTIONS.map((option) => (
+                      <option value={option.value} key={option.value || 'none'}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="field-group">
+                  <span className="field-label">Physical effort</span>
+                  <select
+                    value={newTaskPhysicalEffort}
+                    onChange={(event) =>
+                      setNewTaskPhysicalEffort(event.target.value)
+                    }
+                    disabled={Boolean(configError) || taskSubmitting}
+                  >
+                    {TASK_REQUIREMENT_OPTIONS.map((option) => (
                       <option value={option.value} key={option.value || 'none'}>
                         {option.label}
                       </option>

@@ -247,7 +247,7 @@ select:disabled {
 }
 
 .view-tabs {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   padding: 0.35rem;
   border-radius: 1rem;
   background: #edf3fb;
@@ -737,6 +737,101 @@ select:disabled {
   flex: 1 1 8rem;
 }
 
+.picker-controls {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.picker-energy-group {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.picker-energy-options {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.picker-energy-button {
+  width: 100%;
+  min-height: 3rem;
+  border: 2px solid transparent;
+  border-radius: 0.85rem;
+  padding: 0.7rem 0.85rem;
+  background: #edf3fb;
+  color: #1c345f;
+  font-weight: 800;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    transform 120ms ease,
+    opacity 120ms ease,
+    background 120ms ease,
+    border-color 120ms ease;
+}
+
+.picker-energy-button:hover {
+  background: #dfeaf8;
+}
+
+.picker-energy-button.is-selected {
+  border-color: #1f5eff;
+  background: #ffffff;
+  color: #172033;
+  box-shadow: 0 6px 18px rgba(33, 51, 84, 0.12);
+}
+
+.picker-energy-button:active {
+  transform: translateY(1px);
+}
+
+.picker-energy-button:disabled {
+  cursor: wait;
+  opacity: 0.78;
+}
+
+.picker-result-section {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.picker-task-card {
+  padding: 1rem;
+  border: 1px solid #d8e2ef;
+  border-radius: 1rem;
+  background: #ffffff;
+  display: grid;
+  gap: 0.85rem;
+}
+
+.picker-task-card h3 {
+  font-size: 1.25rem;
+  line-height: 1.25;
+}
+
+.picker-task-details {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.picker-task-details span {
+  padding: 0.28rem 0.6rem;
+  border-radius: 999px;
+  background: #edf3fb;
+  color: #355074;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.picker-actions {
+  margin-top: 0.1rem;
+}
+
 .swipe-action {
   position: absolute;
   inset-block: 0;
@@ -1000,6 +1095,14 @@ select:disabled {
 
   .task-edit-actions {
     grid-column: 1 / -1;
+  }
+
+  .picker-energy-options {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .picker-energy-button {
+    text-align: center;
   }
 
   .project-grid {

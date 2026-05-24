@@ -20,7 +20,8 @@ Small React + Vite + TypeScript task manager connected to Supabase. This version
 - Open a project to see its task list
 - Add tasks, select tasks for bulk actions, complete tasks, delete tasks, and drag tasks into your preferred order
 - Add repeat schedules, repeat start dates, and deadline dates to tasks
-- Add effort estimates and shopping flags to tasks
+- Add expected time, mental effort, physical effort, and shopping flags to tasks
+- Get a task recommendation from Pick for Me based on current mental and physical energy
 - Automatically show due, overdue, and repeating tasks in Daily Tasks
 - Move tasks into a top-level Daily Tasks bucket
 - Swipe active tasks left on mobile to send them to Daily Tasks
@@ -79,8 +80,10 @@ create table if not exists public.tasks (
   repeat_type text not null default 'none',
   repeat_start_date date,
   deadline_date date,
-  effort text,
+  expected_time text,
   shopping boolean not null default false,
+  mental_effort integer,
+  physical_effort integer,
   sort_order integer,
   created_at timestamptz default now()
 );
@@ -125,10 +128,32 @@ alter table public.tasks
 add column if not exists deadline_date date;
 
 alter table public.tasks
-add column if not exists effort text;
+add column if not exists expected_time text;
+
+do $$
+begin
+  if exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'tasks'
+      and column_name = 'effort'
+  ) then
+    update public.tasks
+    set expected_time = effort
+    where expected_time is null
+      and effort is not null;
+  end if;
+end $$;
 
 alter table public.tasks
 add column if not exists shopping boolean not null default false;
+
+alter table public.tasks
+add column if not exists mental_effort integer;
+
+alter table public.tasks
+add column if not exists physical_effort integer;
 
 update public.tasks
 set repeat_type = 'none'
@@ -242,13 +267,39 @@ begin
   if not exists (
     select 1
     from pg_constraint
-    where conname = 'tasks_effort_check'
+    where conname = 'tasks_expected_time_check'
   ) then
     alter table public.tasks
-    add constraint tasks_effort_check
+    add constraint tasks_expected_time_check
     check (
-      effort is null
-      or effort in ('5_minutes', '15_minutes', '30_minutes', '1_hour_plus')
+      expected_time is null
+      or expected_time in ('5_minutes', '15_minutes', '30_minutes', '1_hour_plus')
+    );
+  end if;
+
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'tasks_mental_effort_check'
+  ) then
+    alter table public.tasks
+    add constraint tasks_mental_effort_check
+    check (
+      mental_effort is null
+      or mental_effort between 1 and 5
+    );
+  end if;
+
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'tasks_physical_effort_check'
+  ) then
+    alter table public.tasks
+    add constraint tasks_physical_effort_check
+    check (
+      physical_effort is null
+      or physical_effort between 1 and 5
     );
   end if;
 end $$;
@@ -416,7 +467,7 @@ to authenticated
 using (user_id = auth.uid());
 ```
 
-If you already ran an earlier migration and want to keep your existing data, run the `tasks.user_id`, `project_id drop not null`, `sort_order`, repeat/deadline/effort/shopping columns, `task_occurrence_completions`, and policy updates from the block above without the two `delete from` statements.
+If you already ran an earlier migration and want to keep your existing data, run the `tasks.user_id`, `project_id drop not null`, `sort_order`, repeat/deadline/expected-time/shopping/mental-effort/physical-effort columns, `task_occurrence_completions`, and policy updates from the block above without the two `delete from` statements.
 
 ## Manually create your user in Supabase
 
@@ -455,7 +506,8 @@ The frontend still uses `VITE_SUPABASE_ANON_KEY`, which is normal for Supabase c
    - you can open the project
    - you can create tasks
    - you can set repeat schedules, repeat start dates, and deadline dates on tasks
-   - you can set effort estimates and mark whether a task involves shopping
+   - you can set expected time, mental effort, physical effort, and whether a task involves shopping
+   - Pick for Me recommends a non-shopping task that matches your current energy
    - due, overdue, and matching repeating tasks appear in Daily Tasks
    - completing a repeating task removes it from Daily Tasks for today only
    - clicking task text completes a task
