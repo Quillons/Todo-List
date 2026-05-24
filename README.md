@@ -19,6 +19,8 @@ Small React + Vite + TypeScript task manager connected to Supabase. This version
 - Create, rename, and delete project categories
 - Open a project to see its task list
 - Add tasks, select tasks for bulk actions, complete tasks, delete tasks, and drag tasks into your preferred order
+- Add repeat schedules, repeat start dates, and deadline dates to tasks
+- Automatically show due, overdue, and repeating tasks in Daily Tasks
 - Move tasks into a top-level Daily Tasks bucket
 - Swipe active tasks left on mobile to send them to Daily Tasks
 - Swipe tasks right on mobile to delete them
@@ -73,8 +75,20 @@ create table if not exists public.tasks (
   completed boolean not null default false,
   is_daily boolean not null default false,
   daily_added_at timestamptz,
+  repeat_type text not null default 'none',
+  repeat_start_date date,
+  deadline_date date,
   sort_order integer,
   created_at timestamptz default now()
+);
+
+create table if not exists public.task_occurrence_completions (
+  id uuid primary key default gen_random_uuid(),
+  task_id uuid not null references public.tasks(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  occurrence_date date not null,
+  created_at timestamptz default now(),
+  unique (task_id, occurrence_date)
 );
 
 delete from public.tasks;
@@ -97,6 +111,25 @@ add column if not exists is_daily boolean not null default false;
 
 alter table public.tasks
 add column if not exists daily_added_at timestamptz;
+
+alter table public.tasks
+add column if not exists repeat_type text not null default 'none';
+
+alter table public.tasks
+add column if not exists repeat_start_date date;
+
+alter table public.tasks
+add column if not exists deadline_date date;
+
+update public.tasks
+set repeat_type = 'none'
+where repeat_type is null;
+
+alter table public.tasks
+alter column repeat_type set default 'none';
+
+alter table public.tasks
+alter column repeat_type set not null;
 
 alter table public.tasks
 add column if not exists sort_order integer;
@@ -170,6 +203,22 @@ begin
       or card_icon in ('house', 'bicycle', 'lightbulb', 'car', 'running', 'euro', 'shopping')
     );
   end if;
+
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'tasks_repeat_type_check'
+  ) then
+    alter table public.tasks
+    add constraint tasks_repeat_type_check
+    check (
+      repeat_type in ('none', 'daily', 'workdays', 'weekends', 'weekly', 'monthly', 'yearly')
+      and (
+        repeat_type = 'none'
+        or repeat_start_date is not null
+      )
+    );
+  end if;
 end $$;
 
 alter table public.projects
@@ -177,6 +226,7 @@ alter column user_id set not null;
 
 alter table public.projects enable row level security;
 alter table public.tasks enable row level security;
+alter table public.task_occurrence_completions enable row level security;
 
 drop policy if exists "Allow anon read for connection test" on public.projects;
 drop policy if exists "Allow anon select projects" on public.projects;
@@ -196,6 +246,10 @@ drop policy if exists "Users can view tasks in their own projects" on public.tas
 drop policy if exists "Users can create tasks in their own projects" on public.tasks;
 drop policy if exists "Users can update tasks in their own projects" on public.tasks;
 drop policy if exists "Users can delete tasks in their own projects" on public.tasks;
+drop policy if exists "Users can view their own task completions" on public.task_occurrence_completions;
+drop policy if exists "Users can create their own task completions" on public.task_occurrence_completions;
+drop policy if exists "Users can update their own task completions" on public.task_occurrence_completions;
+drop policy if exists "Users can delete their own task completions" on public.task_occurrence_completions;
 
 create policy "Users can view their own projects"
 on public.projects
@@ -291,9 +345,46 @@ using (
       and projects.user_id = auth.uid()
   )
 );
+
+create policy "Users can view their own task completions"
+on public.task_occurrence_completions
+for select
+to authenticated
+using (user_id = auth.uid());
+
+create policy "Users can create their own task completions"
+on public.task_occurrence_completions
+for insert
+to authenticated
+with check (
+  user_id = auth.uid()
+  and exists (
+    select 1
+    from public.tasks
+    left join public.projects on projects.id = tasks.project_id
+    where tasks.id = task_occurrence_completions.task_id
+      and (
+        tasks.user_id = auth.uid()
+        or projects.user_id = auth.uid()
+      )
+  )
+);
+
+create policy "Users can update their own task completions"
+on public.task_occurrence_completions
+for update
+to authenticated
+using (user_id = auth.uid())
+with check (user_id = auth.uid());
+
+create policy "Users can delete their own task completions"
+on public.task_occurrence_completions
+for delete
+to authenticated
+using (user_id = auth.uid());
 ```
 
-If you already ran an earlier migration and want to keep your existing data, run the `tasks.user_id`, `project_id drop not null`, `sort_order`, and policy updates from the block above without the two `delete from` statements.
+If you already ran an earlier migration and want to keep your existing data, run the `tasks.user_id`, `project_id drop not null`, `sort_order`, repeat/deadline columns, `task_occurrence_completions`, and policy updates from the block above without the two `delete from` statements.
 
 ## Manually create your user in Supabase
 
@@ -331,6 +422,9 @@ The frontend still uses `VITE_SUPABASE_ANON_KEY`, which is normal for Supabase c
    - you can create a project
    - you can open the project
    - you can create tasks
+   - you can set repeat schedules, repeat start dates, and deadline dates on tasks
+   - due, overdue, and matching repeating tasks appear in Daily Tasks
+   - completing a repeating task removes it from Daily Tasks for today only
    - clicking task text completes a task
    - checking tasks selects them for bulk send-to-daily, complete, or delete actions
    - moving a task to Daily removes it from Active Tasks and shows it in both Daily Tasks and Tasks on Daily Task

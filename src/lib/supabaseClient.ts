@@ -18,6 +18,15 @@ export type ProjectCardIcon =
   | 'euro'
   | 'shopping'
 
+export type TaskRepeatType =
+  | 'none'
+  | 'daily'
+  | 'workdays'
+  | 'weekends'
+  | 'weekly'
+  | 'monthly'
+  | 'yearly'
+
 export type Project = {
   id: string
   user_id: string
@@ -36,7 +45,18 @@ export type Task = {
   completed: boolean
   is_daily: boolean
   daily_added_at: string | null
+  repeat_type: TaskRepeatType
+  repeat_start_date: string | null
+  deadline_date: string | null
   sort_order: number | null
+  created_at: string | null
+}
+
+export type TaskOccurrenceCompletion = {
+  id: string
+  task_id: string
+  user_id: string
+  occurrence_date: string
   created_at: string | null
 }
 

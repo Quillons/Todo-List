@@ -13,6 +13,7 @@ import {
   type ProjectCardIcon,
   type Project,
   type Task,
+  type TaskRepeatType,
 } from './lib/supabaseClient'
 
 function getErrorMessage(error: unknown) {
@@ -81,6 +82,142 @@ type TaskDragLayout = {
 
 const SWIPE_THRESHOLD = 72
 const SWIPE_IGNORE_VERTICAL = 16
+
+const TASK_REPEAT_OPTIONS: Array<{
+  value: TaskRepeatType
+  label: string
+}> = [
+  { value: 'none', label: 'Does not repeat' },
+  { value: 'daily', label: 'Daily' },
+  { value: 'workdays', label: 'Workdays' },
+  { value: 'weekends', label: 'Weekends' },
+  { value: 'weekly', label: 'Weekly' },
+  { value: 'monthly', label: 'Monthly' },
+  { value: 'yearly', label: 'Yearly' },
+]
+
+function getLocalDateKey(date = new Date()) {
+  const year = date.getFullYear()
+  const month = `${date.getMonth() + 1}`.padStart(2, '0')
+  const day = `${date.getDate()}`.padStart(2, '0')
+
+  return `${year}-${month}-${day}`
+}
+
+function parseLocalDateKey(dateKey: string | null) {
+  if (!dateKey) {
+    return null
+  }
+
+  const [year, month, day] = dateKey.split('-').map(Number)
+
+  if (!year || !month || !day) {
+    return null
+  }
+
+  return new Date(year, month - 1, day)
+}
+
+function getDaysInMonth(year: number, monthIndex: number) {
+  return new Date(year, monthIndex + 1, 0).getDate()
+}
+
+function getTaskRepeatType(task: Task) {
+  return TASK_REPEAT_OPTIONS.some((option) => option.value === task.repeat_type)
+    ? task.repeat_type
+    : 'none'
+}
+
+function isRecurringTask(task: Task) {
+  return getTaskRepeatType(task) !== 'none'
+}
+
+function isTaskDueBy(task: Task, dateKey: string) {
+  return Boolean(task.deadline_date && task.deadline_date <= dateKey)
+}
+
+function doesTaskRepeatOn(task: Task, dateKey: string) {
+  if (!isRecurringTask(task)) {
+    return false
+  }
+
+  const startDate = parseLocalDateKey(task.repeat_start_date)
+  const targetDate = parseLocalDateKey(dateKey)
+
+  if (!startDate || !targetDate || dateKey < task.repeat_start_date!) {
+    return false
+  }
+
+  const targetDay = targetDate.getDay()
+
+  switch (getTaskRepeatType(task)) {
+    case 'daily':
+      return true
+    case 'workdays':
+      return targetDay >= 1 && targetDay <= 5
+    case 'weekends':
+      return targetDay === 0 || targetDay === 6
+    case 'weekly':
+      return targetDay === startDate.getDay()
+    case 'monthly': {
+      const expectedDay = Math.min(
+        startDate.getDate(),
+        getDaysInMonth(targetDate.getFullYear(), targetDate.getMonth()),
+      )
+
+      return targetDate.getDate() === expectedDay
+    }
+    case 'yearly': {
+      if (targetDate.getMonth() !== startDate.getMonth()) {
+        return false
+      }
+
+      const expectedDay = Math.min(
+        startDate.getDate(),
+        getDaysInMonth(targetDate.getFullYear(), targetDate.getMonth()),
+      )
+
+      return targetDate.getDate() === expectedDay
+    }
+    case 'none':
+      return false
+  }
+}
+
+function shouldShowInDaily(
+  task: Task,
+  dateKey: string,
+  completedRepeatTaskIds: Set<string>,
+) {
+  const repeatsToday = doesTaskRepeatOn(task, dateKey)
+
+  if (isRecurringTask(task) && completedRepeatTaskIds.has(task.id)) {
+    return false
+  }
+
+  return task.is_daily || isTaskDueBy(task, dateKey) || repeatsToday
+}
+
+function getRepeatLabel(repeatType: TaskRepeatType) {
+  return (
+    TASK_REPEAT_OPTIONS.find((option) => option.value === repeatType)?.label ??
+    'Does not repeat'
+  )
+}
+
+function formatDateLabel(dateKey: string) {
+  const date = parseLocalDateKey(dateKey)
+
+  if (!date) {
+    return dateKey
+  }
+
+  return new Intl.DateTimeFormat(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  }).format(date)
+}
 
 function moveItem<T extends { id: string }>(
   items: T[],
@@ -341,6 +478,28 @@ function CardStackIcon() {
   )
 }
 
+function TaskMetaBadges({ task }: { task: Task }) {
+  const repeatType = getTaskRepeatType(task)
+  const badges = [
+    repeatType !== 'none' ? `Repeats ${getRepeatLabel(repeatType)}` : null,
+    task.deadline_date ? `Due ${formatDateLabel(task.deadline_date)}` : null,
+  ].filter(Boolean) as string[]
+
+  if (badges.length === 0) {
+    return null
+  }
+
+  return (
+    <span className="task-meta-badges" aria-label="Task details">
+      {badges.map((badge) => (
+        <span className="task-meta-badge" key={badge}>
+          {badge}
+        </span>
+      ))}
+    </span>
+  )
+}
+
 function TaskRow({
   task,
   projectName,
@@ -348,6 +507,11 @@ function TaskRow({
   selectable,
   swipeToDaily,
   reorderGroup,
+  editing,
+  editText,
+  editRepeatType,
+  editRepeatStartDate,
+  editDeadlineDate,
   isDragging,
   disabled,
   onSelectChange,
@@ -355,6 +519,13 @@ function TaskRow({
   onSendToDaily,
   onRemoveFromDaily,
   onDelete,
+  onStartEdit,
+  onCancelEdit,
+  onSaveEdit,
+  onEditTextChange,
+  onEditRepeatTypeChange,
+  onEditRepeatStartDateChange,
+  onEditDeadlineDateChange,
   onReorderDragStart,
   onReorderDragEnter,
   onReorderDragEnd,
@@ -365,6 +536,11 @@ function TaskRow({
   selectable: boolean
   swipeToDaily: boolean
   reorderGroup: TaskReorderGroup
+  editing: boolean
+  editText: string
+  editRepeatType: TaskRepeatType
+  editRepeatStartDate: string
+  editDeadlineDate: string
   isDragging: boolean
   disabled: boolean
   onSelectChange: (taskId: string, selected: boolean) => void
@@ -372,6 +548,13 @@ function TaskRow({
   onSendToDaily: (task: Task) => void
   onRemoveFromDaily: (task: Task) => void
   onDelete: (taskId: string) => void
+  onStartEdit: (task: Task) => void
+  onCancelEdit: () => void
+  onSaveEdit: (task: Task) => void
+  onEditTextChange: (value: string) => void
+  onEditRepeatTypeChange: (value: TaskRepeatType) => void
+  onEditRepeatStartDateChange: (value: string) => void
+  onEditDeadlineDateChange: (value: string) => void
   onReorderDragStart: (taskId: string, group: TaskReorderGroup) => void
   onReorderDragEnter: (taskId: string, group: TaskReorderGroup) => void
   onReorderDragEnd: () => void
@@ -379,8 +562,8 @@ function TaskRow({
   const swipeStart = useRef<SwipeState | null>(null)
   const [swipeOffset, setSwipeOffset] = useState(0)
   const canSwipeToDaily =
-    swipeToDaily && !task.completed && !task.is_daily && !disabled
-  const canSwipeToDelete = !disabled
+    swipeToDaily && !task.completed && !task.is_daily && !disabled && !editing
+  const canSwipeToDelete = !disabled && !editing
   const canSwipe = canSwipeToDaily || canSwipeToDelete
 
   const resetSwipe = () => {
@@ -394,6 +577,7 @@ function TaskRow({
     task.is_daily ? 'daily-task-item' : '',
     canSwipe ? 'swipeable-task' : '',
     isDragging ? 'is-dragging' : '',
+    editing ? 'is-editing' : '',
   ]
     .filter(Boolean)
     .join(' ')
@@ -533,11 +717,12 @@ function TaskRow({
           onClick={() => onComplete(task)}
           disabled={disabled || task.completed}
         >
-          <span>{task.text}</span>
+          <span className="task-title">{task.text}</span>
           {projectName ? <small>{projectName}</small> : null}
+          <TaskMetaBadges task={task} />
         </button>
-        {task.is_daily && !task.completed && task.project_id ? (
-          <div className="task-actions">
+        <div className="task-actions">
+          {task.is_daily && !task.completed && task.project_id ? (
             <button
               className="icon-button secondary-button"
               type="button"
@@ -546,9 +731,95 @@ function TaskRow({
             >
               Remove Daily
             </button>
-          </div>
-        ) : null}
+          ) : null}
+          <button
+            className="icon-button secondary-button"
+            type="button"
+            onClick={() => {
+              if (editing) {
+                onCancelEdit()
+                return
+              }
+
+              onStartEdit(task)
+            }}
+            disabled={disabled}
+          >
+            Edit
+          </button>
+        </div>
       </div>
+      {editing ? (
+        <form
+          className="task-edit-form"
+          onSubmit={(event) => {
+            event.preventDefault()
+            onSaveEdit(task)
+          }}
+        >
+          <label className="field-group">
+            <span className="field-label">Task</span>
+            <input
+              type="text"
+              value={editText}
+              onChange={(event) =>
+                onEditTextChange(capitalizeFirstLetter(event.target.value))
+              }
+              disabled={disabled}
+            />
+          </label>
+          <label className="field-group">
+            <span className="field-label">Repeats</span>
+            <select
+              value={editRepeatType}
+              onChange={(event) =>
+                onEditRepeatTypeChange(event.target.value as TaskRepeatType)
+              }
+              disabled={disabled}
+            >
+              {TASK_REPEAT_OPTIONS.map((option) => (
+                <option value={option.value} key={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="field-group">
+            <span className="field-label">Repeat start</span>
+            <input
+              type="date"
+              value={editRepeatStartDate}
+              onChange={(event) =>
+                onEditRepeatStartDateChange(event.target.value)
+              }
+              required={editRepeatType !== 'none'}
+              disabled={disabled || editRepeatType === 'none'}
+            />
+          </label>
+          <label className="field-group">
+            <span className="field-label">Deadline</span>
+            <input
+              type="date"
+              value={editDeadlineDate}
+              onChange={(event) => onEditDeadlineDateChange(event.target.value)}
+              disabled={disabled}
+            />
+          </label>
+          <div className="task-edit-actions">
+            <button className="primary-button" type="submit" disabled={disabled}>
+              Save
+            </button>
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={onCancelEdit}
+              disabled={disabled}
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
+      ) : null}
     </li>
   )
 }
@@ -587,7 +858,21 @@ function App() {
     useState<ProjectCardColor | null>(null)
   const [editingProjectIcon, setEditingProjectIcon] =
     useState<ProjectCardIcon | null>(null)
+  const [showTaskCreateForm, setShowTaskCreateForm] = useState(false)
   const [newTaskText, setNewTaskText] = useState('')
+  const [newTaskRepeatType, setNewTaskRepeatType] =
+    useState<TaskRepeatType>('none')
+  const [newTaskRepeatStartDate, setNewTaskRepeatStartDate] = useState(
+    getLocalDateKey,
+  )
+  const [newTaskDeadlineDate, setNewTaskDeadlineDate] = useState('')
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null)
+  const [editingTaskText, setEditingTaskText] = useState('')
+  const [editingTaskRepeatType, setEditingTaskRepeatType] =
+    useState<TaskRepeatType>('none')
+  const [editingTaskRepeatStartDate, setEditingTaskRepeatStartDate] =
+    useState(getLocalDateKey)
+  const [editingTaskDeadlineDate, setEditingTaskDeadlineDate] = useState('')
   const [newGroceryItemText, setNewGroceryItemText] = useState('')
   const [showCompleted, setShowCompleted] = useState(false)
   const [projectsLoading, setProjectsLoading] = useState(false)
@@ -658,6 +943,14 @@ function App() {
     dailyTasksRef.current = dailyTasks
   }, [dailyTasks])
 
+  function resetNewTaskForm() {
+    setShowTaskCreateForm(false)
+    setNewTaskText('')
+    setNewTaskRepeatType('none')
+    setNewTaskRepeatStartDate(getLocalDateKey())
+    setNewTaskDeadlineDate('')
+  }
+
   function clearAppState() {
     setAppView('daily')
     setProjects([])
@@ -671,7 +964,12 @@ function App() {
     setEditingProjectName('')
     setEditingProjectColor(null)
     setEditingProjectIcon(null)
-    setNewTaskText('')
+    resetNewTaskForm()
+    setEditingTaskId(null)
+    setEditingTaskText('')
+    setEditingTaskRepeatType('none')
+    setEditingTaskRepeatStartDate(getLocalDateKey())
+    setEditingTaskDeadlineDate('')
     setNewGroceryItemText('')
     setShowCompleted(false)
     setDraggingProjectId(null)
@@ -749,11 +1047,14 @@ function App() {
 
     try {
       const supabase = getSupabaseClient()
+      const todayKey = getLocalDateKey()
       const { data, error } = await supabase
         .from('tasks')
         .select('*, projects(name)')
-        .eq('is_daily', true)
         .eq('completed', false)
+        .or(
+          `is_daily.eq.true,deadline_date.lte.${todayKey},repeat_type.neq.none`,
+        )
         .order('sort_order', { ascending: true, nullsFirst: false })
         .order('daily_added_at', { ascending: false, nullsFirst: false })
         .order('created_at', { ascending: true })
@@ -763,16 +1064,40 @@ function App() {
       }
 
       const rows = (data ?? []) as DailyTaskResponse[]
+      const repeatingTaskIds = rows
+        .filter((row) => isRecurringTask(row))
+        .map((row) => row.id)
+      let completedRepeatTaskIds = new Set<string>()
+
+      if (repeatingTaskIds.length > 0) {
+        const { data: completionData, error: completionError } = await supabase
+          .from('task_occurrence_completions')
+          .select('task_id')
+          .eq('occurrence_date', todayKey)
+          .in('task_id', repeatingTaskIds)
+
+        if (completionError) {
+          throw completionError
+        }
+
+        completedRepeatTaskIds = new Set(
+          (completionData ?? []).map((completion) => completion.task_id),
+        )
+      }
 
       setDailyTasks(
-        rows.map((row) => {
-          const { projects: _projects, ...task } = row
+        rows
+          .filter((row) =>
+            shouldShowInDaily(row, todayKey, completedRepeatTaskIds),
+          )
+          .map((row) => {
+            const { projects: _projects, ...task } = row
 
-          return {
-            ...task,
-            project_name: getDailyProjectName(row),
-          }
-        }),
+            return {
+              ...task,
+              project_name: getDailyProjectName(row),
+            }
+          }),
       )
     } catch (error) {
       setDailyTasksError(getErrorMessage(error))
@@ -1241,7 +1566,12 @@ function App() {
       setTasks([])
       setTasksError(null)
       setTaskActionError(null)
-      setNewTaskText('')
+      resetNewTaskForm()
+      setEditingTaskId(null)
+      setEditingTaskText('')
+      setEditingTaskRepeatType('none')
+      setEditingTaskRepeatStartDate(getLocalDateKey())
+      setEditingTaskDeadlineDate('')
       setShowCompleted(false)
       return
     }
@@ -1463,18 +1793,21 @@ function App() {
   const handleOpenProject = (projectId: string) => {
     setAppView('projects')
     setSelectedProjectId(projectId)
+    resetNewTaskForm()
     setTaskActionError(null)
     setTasksError(null)
     setShowCompleted(false)
   }
 
   const handleBackToProjects = () => {
+    resetNewTaskForm()
     setSelectedProjectId(null)
   }
 
   const handleShowDailyTasks = () => {
     setAppView('daily')
     setSelectedProjectId(null)
+    resetNewTaskForm()
     setTaskActionError(null)
     setDailyTasksError(null)
     void fetchDailyTasks()
@@ -1483,6 +1816,7 @@ function App() {
   const handleShowGroceryList = () => {
     setAppView('grocery')
     setSelectedProjectId(null)
+    resetNewTaskForm()
     setTaskActionError(null)
     setGroceryItemsError(null)
     void fetchGroceryItems()
@@ -1490,7 +1824,102 @@ function App() {
 
   const handleShowProjects = () => {
     setAppView('projects')
+    resetNewTaskForm()
     setTaskActionError(null)
+  }
+
+  function getTaskDetailPayload(
+    repeatType: TaskRepeatType,
+    repeatStartDate: string,
+    deadlineDate: string,
+  ) {
+    return {
+      repeat_type: repeatType,
+      repeat_start_date:
+        repeatType === 'none' ? null : repeatStartDate || getLocalDateKey(),
+      deadline_date: deadlineDate || null,
+    }
+  }
+
+  const handleNewTaskRepeatTypeChange = (repeatType: TaskRepeatType) => {
+    setNewTaskRepeatType(repeatType)
+
+    if (repeatType !== 'none' && !newTaskRepeatStartDate) {
+      setNewTaskRepeatStartDate(getLocalDateKey())
+    }
+  }
+
+  const handleStartTaskEdit = (task: Task) => {
+    setEditingTaskId(task.id)
+    setEditingTaskText(task.text)
+    setEditingTaskRepeatType(getTaskRepeatType(task))
+    setEditingTaskRepeatStartDate(task.repeat_start_date ?? getLocalDateKey())
+    setEditingTaskDeadlineDate(task.deadline_date ?? '')
+    setTaskActionError(null)
+  }
+
+  const handleCancelTaskEdit = () => {
+    setEditingTaskId(null)
+    setEditingTaskText('')
+    setEditingTaskRepeatType('none')
+    setEditingTaskRepeatStartDate(getLocalDateKey())
+    setEditingTaskDeadlineDate('')
+  }
+
+  const handleEditingTaskRepeatTypeChange = (repeatType: TaskRepeatType) => {
+    setEditingTaskRepeatType(repeatType)
+
+    if (repeatType !== 'none' && !editingTaskRepeatStartDate) {
+      setEditingTaskRepeatStartDate(getLocalDateKey())
+    }
+  }
+
+  const handleSaveTaskEdit = async (task: Task) => {
+    if (!session) {
+      setTaskActionError('You must be signed in to update a task.')
+      return
+    }
+
+    const trimmedText = capitalizeFirstLetter(editingTaskText).trim()
+
+    if (!trimmedText) {
+      setTaskActionError('Task text cannot be empty.')
+      return
+    }
+
+    if (editingTaskRepeatType !== 'none' && !editingTaskRepeatStartDate) {
+      setTaskActionError('Repeat start date is required for repeating tasks.')
+      return
+    }
+
+    setTaskSubmitting(true)
+    setTaskActionError(null)
+
+    try {
+      const supabase = getSupabaseClient()
+      const { error } = await supabase
+        .from('tasks')
+        .update({
+          text: trimmedText,
+          ...getTaskDetailPayload(
+            editingTaskRepeatType,
+            editingTaskRepeatStartDate,
+            editingTaskDeadlineDate,
+          ),
+        })
+        .eq('id', task.id)
+
+      if (error) {
+        throw error
+      }
+
+      handleCancelTaskEdit()
+      await refreshTaskViews(getVisibleProjectRefreshId(task))
+    } catch (error) {
+      setTaskActionError(getErrorMessage(error))
+    } finally {
+      setTaskSubmitting(false)
+    }
   }
 
   const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
@@ -1513,11 +1942,21 @@ function App() {
       return
     }
 
+    if (newTaskRepeatType !== 'none' && !newTaskRepeatStartDate) {
+      setTaskActionError('Repeat start date is required for repeating tasks.')
+      return
+    }
+
     setTaskSubmitting(true)
     setTaskActionError(null)
 
     try {
       const supabase = getSupabaseClient()
+      const taskDetailPayload = getTaskDetailPayload(
+        newTaskRepeatType,
+        newTaskRepeatStartDate,
+        newTaskDeadlineDate,
+      )
       const { error } = await supabase.from('tasks').insert(
         isDailyTask
           ? {
@@ -1527,11 +1966,14 @@ function App() {
               is_daily: true,
               daily_added_at: new Date().toISOString(),
               sort_order: dailyTasks.length,
+              ...taskDetailPayload,
             }
           : {
               project_id: selectedProjectId,
+              user_id: session.user.id,
               text: trimmedText,
               sort_order: tasks.length,
+              ...taskDetailPayload,
             },
       )
 
@@ -1539,7 +1981,7 @@ function App() {
         throw error
       }
 
-      setNewTaskText('')
+      resetNewTaskForm()
       if (isDailyTask) {
         await fetchDailyTasks()
       } else if (selectedProjectId) {
@@ -1757,6 +2199,32 @@ function App() {
 
     try {
       const supabase = getSupabaseClient()
+
+      if (isRecurringTask(task)) {
+        const { error } = await supabase
+          .from('task_occurrence_completions')
+          .upsert(
+            {
+              task_id: task.id,
+              user_id: session.user.id,
+              occurrence_date: getLocalDateKey(),
+            },
+            { onConflict: 'task_id,occurrence_date' },
+          )
+
+        if (error) {
+          throw error
+        }
+
+        setSelectedTaskIds((current) => {
+          const next = new Set(current)
+          next.delete(task.id)
+          return next
+        })
+        await refreshTaskViews(getVisibleProjectRefreshId(task))
+        return
+      }
+
       const { error } = await supabase
         .from('tasks')
         .update({
@@ -1858,11 +2326,20 @@ function App() {
   }
 
   const handleBulkComplete = async () => {
+    if (!session) {
+      setTaskActionError('You must be signed in to update tasks.')
+      return
+    }
+
+    const recurringTasks = selectedTasks.filter(
+      (task) => !task.completed && isRecurringTask(task),
+    )
     const taskIds = selectedTasks
       .filter((task) => !task.completed)
+      .filter((task) => !isRecurringTask(task))
       .map((task) => task.id)
 
-    if (taskIds.length === 0) {
+    if (taskIds.length === 0 && recurringTasks.length === 0) {
       setSelectedTaskIds(new Set())
       return
     }
@@ -1872,17 +2349,33 @@ function App() {
 
     try {
       const supabase = getSupabaseClient()
-      const { error } = await supabase
-        .from('tasks')
-        .update({
-          completed: true,
-          is_daily: false,
-          daily_added_at: null,
-        })
-        .in('id', taskIds)
+      const todayKey = getLocalDateKey()
+      const updates = await Promise.all([
+        taskIds.length > 0
+          ? supabase
+              .from('tasks')
+              .update({
+                completed: true,
+                is_daily: false,
+                daily_added_at: null,
+              })
+              .in('id', taskIds)
+          : Promise.resolve({ error: null }),
+        recurringTasks.length > 0
+          ? supabase.from('task_occurrence_completions').upsert(
+              recurringTasks.map((task) => ({
+                task_id: task.id,
+                user_id: session.user.id,
+                occurrence_date: todayKey,
+              })),
+              { onConflict: 'task_id,occurrence_date' },
+            )
+          : Promise.resolve({ error: null }),
+      ])
+      const failedUpdate = updates.find((update) => update.error)
 
-      if (error) {
-        throw error
+      if (failedUpdate?.error) {
+        throw failedUpdate.error
       }
 
       setSelectedTaskIds(new Set())
@@ -1989,6 +2482,11 @@ function App() {
       selectable={options.selectable ?? !task.completed}
       swipeToDaily={options.swipeToDaily ?? false}
       reorderGroup={options.reorderGroup ?? 'active'}
+      editing={editingTaskId === task.id}
+      editText={editingTaskText}
+      editRepeatType={editingTaskRepeatType}
+      editRepeatStartDate={editingTaskRepeatStartDate}
+      editDeadlineDate={editingTaskDeadlineDate}
       isDragging={draggingTask?.id === task.id}
       disabled={isBusy}
       onSelectChange={handleSelectTask}
@@ -1996,6 +2494,13 @@ function App() {
       onSendToDaily={(nextTask) => void handleSendToDaily(nextTask)}
       onRemoveFromDaily={(nextTask) => void handleRemoveFromDaily(nextTask)}
       onDelete={(taskId) => void handleDeleteTask(taskId)}
+      onStartEdit={handleStartTaskEdit}
+      onCancelEdit={handleCancelTaskEdit}
+      onSaveEdit={(nextTask) => void handleSaveTaskEdit(nextTask)}
+      onEditTextChange={setEditingTaskText}
+      onEditRepeatTypeChange={handleEditingTaskRepeatTypeChange}
+      onEditRepeatStartDateChange={setEditingTaskRepeatStartDate}
+      onEditDeadlineDateChange={setEditingTaskDeadlineDate}
       onReorderDragStart={handleTaskDragStart}
       onReorderDragEnter={handleTaskDragEnter}
       onReorderDragEnd={handleTaskDragEnd}
@@ -2161,27 +2666,96 @@ function App() {
               </div>
             ) : null}
 
-            <form className="inline-form" onSubmit={handleCreateTask}>
-              <label className="field-group">
-                <span className="field-label">New task</span>
-                <input
-                  type="text"
-                  value={newTaskText}
-                  onChange={(event) =>
-                    setNewTaskText(capitalizeFirstLetter(event.target.value))
-                  }
-                  placeholder="Add a daily task"
-                  disabled={Boolean(configError) || taskSubmitting}
-                />
-              </label>
+            {showTaskCreateForm ? (
+              <form
+                className="inline-form task-create-form"
+                onSubmit={handleCreateTask}
+              >
+                <label className="field-group task-text-field">
+                  <span className="field-label">New task</span>
+                  <input
+                    type="text"
+                    value={newTaskText}
+                    onChange={(event) =>
+                      setNewTaskText(capitalizeFirstLetter(event.target.value))
+                    }
+                    placeholder="Add a daily task"
+                    disabled={Boolean(configError) || taskSubmitting}
+                  />
+                </label>
+                <label className="field-group">
+                  <span className="field-label">Repeats</span>
+                  <select
+                    value={newTaskRepeatType}
+                    onChange={(event) =>
+                      handleNewTaskRepeatTypeChange(
+                        event.target.value as TaskRepeatType,
+                      )
+                    }
+                    disabled={Boolean(configError) || taskSubmitting}
+                  >
+                    {TASK_REPEAT_OPTIONS.map((option) => (
+                      <option value={option.value} key={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="field-group">
+                  <span className="field-label">Repeat start</span>
+                  <input
+                    type="date"
+                    value={newTaskRepeatStartDate}
+                    onChange={(event) =>
+                      setNewTaskRepeatStartDate(event.target.value)
+                    }
+                    required={newTaskRepeatType !== 'none'}
+                    disabled={
+                      Boolean(configError) ||
+                      taskSubmitting ||
+                      newTaskRepeatType === 'none'
+                    }
+                  />
+                </label>
+                <label className="field-group">
+                  <span className="field-label">Deadline</span>
+                  <input
+                    type="date"
+                    value={newTaskDeadlineDate}
+                    onChange={(event) =>
+                      setNewTaskDeadlineDate(event.target.value)
+                    }
+                    disabled={Boolean(configError) || taskSubmitting}
+                  />
+                </label>
+                <div className="task-create-actions">
+                  <button
+                    className="primary-button"
+                    type="submit"
+                    disabled={Boolean(configError) || taskSubmitting}
+                  >
+                    {taskSubmitting ? 'Saving...' : 'Add Task'}
+                  </button>
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    onClick={resetNewTaskForm}
+                    disabled={taskSubmitting}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            ) : (
               <button
-                className="primary-button"
-                type="submit"
+                className="primary-button task-create-toggle"
+                type="button"
+                onClick={() => setShowTaskCreateForm(true)}
                 disabled={Boolean(configError) || taskSubmitting}
               >
-                {taskSubmitting ? 'Saving...' : 'Add Task'}
+                New Task
               </button>
-            </form>
+            )}
 
             {renderBulkActions()}
 
@@ -2318,27 +2892,96 @@ function App() {
               </div>
             ) : null}
 
-            <form className="inline-form" onSubmit={handleCreateTask}>
-              <label className="field-group">
-                <span className="field-label">New task</span>
-                <input
-                  type="text"
-                  value={newTaskText}
-                  onChange={(event) =>
-                    setNewTaskText(capitalizeFirstLetter(event.target.value))
-                  }
-                  placeholder="Add a task for this project"
-                  disabled={Boolean(configError) || taskSubmitting}
-                />
-              </label>
+            {showTaskCreateForm ? (
+              <form
+                className="inline-form task-create-form"
+                onSubmit={handleCreateTask}
+              >
+                <label className="field-group task-text-field">
+                  <span className="field-label">New task</span>
+                  <input
+                    type="text"
+                    value={newTaskText}
+                    onChange={(event) =>
+                      setNewTaskText(capitalizeFirstLetter(event.target.value))
+                    }
+                    placeholder="Add a task for this project"
+                    disabled={Boolean(configError) || taskSubmitting}
+                  />
+                </label>
+                <label className="field-group">
+                  <span className="field-label">Repeats</span>
+                  <select
+                    value={newTaskRepeatType}
+                    onChange={(event) =>
+                      handleNewTaskRepeatTypeChange(
+                        event.target.value as TaskRepeatType,
+                      )
+                    }
+                    disabled={Boolean(configError) || taskSubmitting}
+                  >
+                    {TASK_REPEAT_OPTIONS.map((option) => (
+                      <option value={option.value} key={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="field-group">
+                  <span className="field-label">Repeat start</span>
+                  <input
+                    type="date"
+                    value={newTaskRepeatStartDate}
+                    onChange={(event) =>
+                      setNewTaskRepeatStartDate(event.target.value)
+                    }
+                    required={newTaskRepeatType !== 'none'}
+                    disabled={
+                      Boolean(configError) ||
+                      taskSubmitting ||
+                      newTaskRepeatType === 'none'
+                    }
+                  />
+                </label>
+                <label className="field-group">
+                  <span className="field-label">Deadline</span>
+                  <input
+                    type="date"
+                    value={newTaskDeadlineDate}
+                    onChange={(event) =>
+                      setNewTaskDeadlineDate(event.target.value)
+                    }
+                    disabled={Boolean(configError) || taskSubmitting}
+                  />
+                </label>
+                <div className="task-create-actions">
+                  <button
+                    className="primary-button"
+                    type="submit"
+                    disabled={Boolean(configError) || taskSubmitting}
+                  >
+                    {taskSubmitting ? 'Saving...' : 'Add Task'}
+                  </button>
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    onClick={resetNewTaskForm}
+                    disabled={taskSubmitting}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            ) : (
               <button
-                className="primary-button"
-                type="submit"
+                className="primary-button task-create-toggle"
+                type="button"
+                onClick={() => setShowTaskCreateForm(true)}
                 disabled={Boolean(configError) || taskSubmitting}
               >
-                {taskSubmitting ? 'Saving...' : 'Add Task'}
+                New Task
               </button>
-            </form>
+            )}
 
             {renderBulkActions()}
 
