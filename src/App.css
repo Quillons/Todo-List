@@ -1087,6 +1087,10 @@ select:disabled {
     justify-content: stretch;
   }
 
+  .daily-task-item .task-actions {
+    display: none;
+  }
+
   .task-actions > * {
     flex: 1 1 8rem;
   }

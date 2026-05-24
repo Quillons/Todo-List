@@ -89,6 +89,8 @@ type TaskDragLayout = {
 
 const SWIPE_THRESHOLD = 72
 const SWIPE_IGNORE_VERTICAL = 16
+const LONG_PRESS_MS = 560
+const LONG_PRESS_MOVE_TOLERANCE = 12
 
 const TASK_REPEAT_OPTIONS: Array<{
   value: TaskRepeatType
@@ -700,15 +702,35 @@ function TaskRow({
   onReorderDragEnd: () => void
 }) {
   const swipeStart = useRef<SwipeState | null>(null)
+  const longPressStart = useRef<SwipeState | null>(null)
+  const longPressTimer = useRef<number | null>(null)
+  const longPressTriggered = useRef(false)
   const [swipeOffset, setSwipeOffset] = useState(0)
   const canSwipeToDaily =
     swipeToDaily && !task.completed && !task.is_daily && !disabled && !editing
+  const canSwipeToRemoveFromDaily =
+    reorderGroup === 'daily' &&
+    task.is_daily &&
+    !task.completed &&
+    Boolean(task.project_id) &&
+    !disabled &&
+    !editing
+  const canSwipeLeft = canSwipeToDaily || canSwipeToRemoveFromDaily
   const canSwipeToDelete = !disabled && !editing
-  const canSwipe = canSwipeToDaily || canSwipeToDelete
+  const canSwipe = canSwipeLeft || canSwipeToDelete
 
   const resetSwipe = () => {
     swipeStart.current = null
     setSwipeOffset(0)
+  }
+
+  const clearLongPress = () => {
+    if (longPressTimer.current !== null) {
+      window.clearTimeout(longPressTimer.current)
+      longPressTimer.current = null
+    }
+
+    longPressStart.current = null
   }
 
   const rowClassName = [
@@ -738,6 +760,9 @@ function TaskRow({
       ) : null}
       {canSwipeToDaily ? (
         <span className="swipe-action swipe-action-daily">Daily</span>
+      ) : null}
+      {canSwipeToRemoveFromDaily ? (
+        <span className="swipe-action swipe-action-daily">Remove</span>
       ) : null}
       <div
         className="task-item-content"
@@ -774,7 +799,7 @@ function TaskRow({
 
           if (deltaX > 0 && canSwipeToDelete) {
             setSwipeOffset(Math.min(deltaX, SWIPE_THRESHOLD + 28))
-          } else if (deltaX < 0 && canSwipeToDaily) {
+          } else if (deltaX < 0 && canSwipeLeft) {
             setSwipeOffset(Math.max(deltaX, -(SWIPE_THRESHOLD + 28)))
           }
         }}
@@ -786,6 +811,8 @@ function TaskRow({
 
           if (swipeOffset >= SWIPE_THRESHOLD) {
             onDelete(task.id)
+          } else if (swipeOffset <= -SWIPE_THRESHOLD && canSwipeToRemoveFromDaily) {
+            onRemoveFromDaily(task)
           } else if (swipeOffset <= -SWIPE_THRESHOLD) {
             onSendToDaily(task)
           }
@@ -854,7 +881,52 @@ function TaskRow({
         <button
           className="task-text-button"
           type="button"
-          onClick={() => onComplete(task)}
+          onPointerDown={(event) => {
+            if (
+              disabled ||
+              task.completed ||
+              editing ||
+              event.pointerType === 'mouse'
+            ) {
+              return
+            }
+
+            longPressTriggered.current = false
+            longPressStart.current = {
+              x: event.clientX,
+              y: event.clientY,
+            }
+            longPressTimer.current = window.setTimeout(() => {
+              longPressTriggered.current = true
+              onStartEdit(task)
+              clearLongPress()
+            }, LONG_PRESS_MS)
+          }}
+          onPointerMove={(event) => {
+            if (!longPressStart.current) {
+              return
+            }
+
+            const deltaX = event.clientX - longPressStart.current.x
+            const deltaY = event.clientY - longPressStart.current.y
+
+            if (
+              Math.hypot(deltaX, deltaY) > LONG_PRESS_MOVE_TOLERANCE
+            ) {
+              clearLongPress()
+            }
+          }}
+          onPointerCancel={clearLongPress}
+          onPointerUp={clearLongPress}
+          onClick={(event) => {
+            if (longPressTriggered.current) {
+              event.preventDefault()
+              longPressTriggered.current = false
+              return
+            }
+
+            onComplete(task)
+          }}
           disabled={disabled || task.completed}
         >
           <span className="task-title">{task.text}</span>
