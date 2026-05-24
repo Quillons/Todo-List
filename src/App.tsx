@@ -558,6 +558,72 @@ function TaskMetaBadges({ task }: { task: Task }) {
   )
 }
 
+function TaskExpectedTimeButtons({
+  value,
+  disabled,
+  onChange,
+}: {
+  value: TaskExpectedTime | ''
+  disabled: boolean
+  onChange: (value: TaskExpectedTime | '') => void
+}) {
+  return (
+    <fieldset className="task-option-row">
+      <legend className="field-label">Expected Time</legend>
+      <div className="task-option-buttons">
+        {TASK_EXPECTED_TIME_OPTIONS.map((option) => (
+          <button
+            className={`task-option-button${
+              value === option.value ? ' is-selected' : ''
+            }`}
+            type="button"
+            key={option.value || 'none'}
+            onClick={() => onChange(option.value)}
+            disabled={disabled}
+            aria-pressed={value === option.value}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+    </fieldset>
+  )
+}
+
+function TaskRequirementButtons({
+  label,
+  value,
+  disabled,
+  onChange,
+}: {
+  label: string
+  value: string
+  disabled: boolean
+  onChange: (value: string) => void
+}) {
+  return (
+    <fieldset className="task-option-row">
+      <legend className="field-label">{label}</legend>
+      <div className="task-option-buttons">
+        {TASK_REQUIREMENT_OPTIONS.map((option) => (
+          <button
+            className={`task-option-button${
+              value === option.value ? ' is-selected' : ''
+            }`}
+            type="button"
+            key={option.value || 'none'}
+            onClick={() => onChange(option.value)}
+            disabled={disabled}
+            aria-pressed={value === option.value}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+    </fieldset>
+  )
+}
+
 function TaskRow({
   task,
   projectName,
@@ -879,56 +945,23 @@ function TaskRow({
               disabled={disabled}
             />
           </label>
-          <label className="field-group">
-            <span className="field-label">Expected Time</span>
-            <select
-              value={editExpectedTime}
-              onChange={(event) =>
-                onEditExpectedTimeChange(
-                  event.target.value as TaskExpectedTime | '',
-                )
-              }
-              disabled={disabled}
-            >
-              {TASK_EXPECTED_TIME_OPTIONS.map((option) => (
-                <option value={option.value} key={option.value || 'none'}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="field-group">
-            <span className="field-label">Mental effort</span>
-            <select
-              value={editMentalEffort}
-              onChange={(event) =>
-                onEditMentalEffortChange(event.target.value)
-              }
-              disabled={disabled}
-            >
-              {TASK_REQUIREMENT_OPTIONS.map((option) => (
-                <option value={option.value} key={option.value || 'none'}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="field-group">
-            <span className="field-label">Physical effort</span>
-            <select
-              value={editPhysicalEffort}
-              onChange={(event) =>
-                onEditPhysicalEffortChange(event.target.value)
-              }
-              disabled={disabled}
-            >
-              {TASK_REQUIREMENT_OPTIONS.map((option) => (
-                <option value={option.value} key={option.value || 'none'}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
+          <TaskExpectedTimeButtons
+            value={editExpectedTime}
+            onChange={onEditExpectedTimeChange}
+            disabled={disabled}
+          />
+          <TaskRequirementButtons
+            label="Mental effort"
+            value={editMentalEffort}
+            onChange={onEditMentalEffortChange}
+            disabled={disabled}
+          />
+          <TaskRequirementButtons
+            label="Physical effort"
+            value={editPhysicalEffort}
+            onChange={onEditPhysicalEffortChange}
+            disabled={disabled}
+          />
           <label className="checkbox-field">
             <span className="field-label">Shopping:</span>
             <input
@@ -3056,56 +3089,23 @@ function App() {
                     disabled={Boolean(configError) || taskSubmitting}
                   />
                 </label>
-                <label className="field-group">
-                  <span className="field-label">Expected Time</span>
-                  <select
-                    value={newTaskExpectedTime}
-                    onChange={(event) =>
-                      setNewTaskExpectedTime(
-                        event.target.value as TaskExpectedTime | '',
-                      )
-                    }
-                    disabled={Boolean(configError) || taskSubmitting}
-                  >
-                    {TASK_EXPECTED_TIME_OPTIONS.map((option) => (
-                      <option value={option.value} key={option.value || 'none'}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="field-group">
-                  <span className="field-label">Mental effort</span>
-                  <select
-                    value={newTaskMentalEffort}
-                    onChange={(event) =>
-                      setNewTaskMentalEffort(event.target.value)
-                    }
-                    disabled={Boolean(configError) || taskSubmitting}
-                  >
-                    {TASK_REQUIREMENT_OPTIONS.map((option) => (
-                      <option value={option.value} key={option.value || 'none'}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="field-group">
-                  <span className="field-label">Physical effort</span>
-                  <select
-                    value={newTaskPhysicalEffort}
-                    onChange={(event) =>
-                      setNewTaskPhysicalEffort(event.target.value)
-                    }
-                    disabled={Boolean(configError) || taskSubmitting}
-                  >
-                    {TASK_REQUIREMENT_OPTIONS.map((option) => (
-                      <option value={option.value} key={option.value || 'none'}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                <TaskExpectedTimeButtons
+                  value={newTaskExpectedTime}
+                  onChange={setNewTaskExpectedTime}
+                  disabled={Boolean(configError) || taskSubmitting}
+                />
+                <TaskRequirementButtons
+                  label="Mental effort"
+                  value={newTaskMentalEffort}
+                  onChange={setNewTaskMentalEffort}
+                  disabled={Boolean(configError) || taskSubmitting}
+                />
+                <TaskRequirementButtons
+                  label="Physical effort"
+                  value={newTaskPhysicalEffort}
+                  onChange={setNewTaskPhysicalEffort}
+                  disabled={Boolean(configError) || taskSubmitting}
+                />
                 <label className="checkbox-field">
                   <span className="field-label">Shopping:</span>
                   <input
@@ -3461,56 +3461,23 @@ function App() {
                     disabled={Boolean(configError) || taskSubmitting}
                   />
                 </label>
-                <label className="field-group">
-                  <span className="field-label">Expected Time</span>
-                  <select
-                    value={newTaskExpectedTime}
-                    onChange={(event) =>
-                      setNewTaskExpectedTime(
-                        event.target.value as TaskExpectedTime | '',
-                      )
-                    }
-                    disabled={Boolean(configError) || taskSubmitting}
-                  >
-                    {TASK_EXPECTED_TIME_OPTIONS.map((option) => (
-                      <option value={option.value} key={option.value || 'none'}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="field-group">
-                  <span className="field-label">Mental effort</span>
-                  <select
-                    value={newTaskMentalEffort}
-                    onChange={(event) =>
-                      setNewTaskMentalEffort(event.target.value)
-                    }
-                    disabled={Boolean(configError) || taskSubmitting}
-                  >
-                    {TASK_REQUIREMENT_OPTIONS.map((option) => (
-                      <option value={option.value} key={option.value || 'none'}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="field-group">
-                  <span className="field-label">Physical effort</span>
-                  <select
-                    value={newTaskPhysicalEffort}
-                    onChange={(event) =>
-                      setNewTaskPhysicalEffort(event.target.value)
-                    }
-                    disabled={Boolean(configError) || taskSubmitting}
-                  >
-                    {TASK_REQUIREMENT_OPTIONS.map((option) => (
-                      <option value={option.value} key={option.value || 'none'}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                <TaskExpectedTimeButtons
+                  value={newTaskExpectedTime}
+                  onChange={setNewTaskExpectedTime}
+                  disabled={Boolean(configError) || taskSubmitting}
+                />
+                <TaskRequirementButtons
+                  label="Mental effort"
+                  value={newTaskMentalEffort}
+                  onChange={setNewTaskMentalEffort}
+                  disabled={Boolean(configError) || taskSubmitting}
+                />
+                <TaskRequirementButtons
+                  label="Physical effort"
+                  value={newTaskPhysicalEffort}
+                  onChange={setNewTaskPhysicalEffort}
+                  disabled={Boolean(configError) || taskSubmitting}
+                />
                 <label className="checkbox-field">
                   <span className="field-label">Shopping:</span>
                   <input
