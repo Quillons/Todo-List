@@ -20,6 +20,7 @@ Small React + Vite + TypeScript task manager connected to Supabase. This version
 - Open a project to see its task list
 - Add tasks, select tasks for bulk actions, complete tasks, delete tasks, and drag tasks into your preferred order
 - Add repeat schedules, repeat start dates, and deadline dates to tasks
+- Add effort estimates and shopping flags to tasks
 - Automatically show due, overdue, and repeating tasks in Daily Tasks
 - Move tasks into a top-level Daily Tasks bucket
 - Swipe active tasks left on mobile to send them to Daily Tasks
@@ -78,6 +79,8 @@ create table if not exists public.tasks (
   repeat_type text not null default 'none',
   repeat_start_date date,
   deadline_date date,
+  effort text,
+  shopping boolean not null default false,
   sort_order integer,
   created_at timestamptz default now()
 );
@@ -121,15 +124,31 @@ add column if not exists repeat_start_date date;
 alter table public.tasks
 add column if not exists deadline_date date;
 
+alter table public.tasks
+add column if not exists effort text;
+
+alter table public.tasks
+add column if not exists shopping boolean not null default false;
+
 update public.tasks
 set repeat_type = 'none'
 where repeat_type is null;
+
+update public.tasks
+set shopping = false
+where shopping is null;
 
 alter table public.tasks
 alter column repeat_type set default 'none';
 
 alter table public.tasks
 alter column repeat_type set not null;
+
+alter table public.tasks
+alter column shopping set default false;
+
+alter table public.tasks
+alter column shopping set not null;
 
 alter table public.tasks
 add column if not exists sort_order integer;
@@ -217,6 +236,19 @@ begin
         repeat_type = 'none'
         or repeat_start_date is not null
       )
+    );
+  end if;
+
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'tasks_effort_check'
+  ) then
+    alter table public.tasks
+    add constraint tasks_effort_check
+    check (
+      effort is null
+      or effort in ('5_minutes', '15_minutes', '30_minutes', '1_hour_plus')
     );
   end if;
 end $$;
@@ -384,7 +416,7 @@ to authenticated
 using (user_id = auth.uid());
 ```
 
-If you already ran an earlier migration and want to keep your existing data, run the `tasks.user_id`, `project_id drop not null`, `sort_order`, repeat/deadline columns, `task_occurrence_completions`, and policy updates from the block above without the two `delete from` statements.
+If you already ran an earlier migration and want to keep your existing data, run the `tasks.user_id`, `project_id drop not null`, `sort_order`, repeat/deadline/effort/shopping columns, `task_occurrence_completions`, and policy updates from the block above without the two `delete from` statements.
 
 ## Manually create your user in Supabase
 
@@ -423,6 +455,7 @@ The frontend still uses `VITE_SUPABASE_ANON_KEY`, which is normal for Supabase c
    - you can open the project
    - you can create tasks
    - you can set repeat schedules, repeat start dates, and deadline dates on tasks
+   - you can set effort estimates and mark whether a task involves shopping
    - due, overdue, and matching repeating tasks appear in Daily Tasks
    - completing a repeating task removes it from Daily Tasks for today only
    - clicking task text completes a task

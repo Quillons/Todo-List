@@ -698,6 +698,21 @@ select:disabled {
   flex: 1 1 8rem;
 }
 
+.checkbox-field {
+  min-height: 3.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.checkbox-field input {
+  width: 1.2rem;
+  height: 1.2rem;
+  margin: 0;
+  padding: 0;
+  flex: 0 0 auto;
+}
+
 .task-edit-form {
   position: relative;
   z-index: 1;
@@ -1002,8 +1017,7 @@ select:disabled {
       minmax(14rem, 1fr)
       minmax(9rem, 0.65fr)
       minmax(9rem, 0.65fr)
-      minmax(9rem, 0.65fr)
-      auto;
+      minmax(9rem, 0.65fr);
   }
 
   .task-edit-form {
@@ -1011,19 +1025,17 @@ select:disabled {
       minmax(13rem, 1fr)
       minmax(9rem, 0.65fr)
       minmax(9rem, 0.65fr)
-      minmax(9rem, 0.65fr)
-      auto;
+      minmax(9rem, 0.65fr);
   }
 
   .task-edit-actions {
-    grid-column: auto;
+    grid-column: 1 / -1;
     align-self: end;
   }
 
   .task-create-actions {
-    grid-column: auto;
+    grid-column: 1 / -1;
     align-self: end;
-    flex-wrap: nowrap;
   }
 
   .project-grid {

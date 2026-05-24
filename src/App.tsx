@@ -13,6 +13,7 @@ import {
   type ProjectCardIcon,
   type Project,
   type Task,
+  type TaskEffort,
   type TaskRepeatType,
 } from './lib/supabaseClient'
 
@@ -94,6 +95,17 @@ const TASK_REPEAT_OPTIONS: Array<{
   { value: 'weekly', label: 'Weekly' },
   { value: 'monthly', label: 'Monthly' },
   { value: 'yearly', label: 'Yearly' },
+]
+
+const TASK_EFFORT_OPTIONS: Array<{
+  value: TaskEffort | ''
+  label: string
+}> = [
+  { value: '', label: 'No estimate' },
+  { value: '5_minutes', label: '5 minutes' },
+  { value: '15_minutes', label: '15 minutes' },
+  { value: '30_minutes', label: '30 minutes' },
+  { value: '1_hour_plus', label: '1+ hour' },
 ]
 
 function getLocalDateKey(date = new Date()) {
@@ -512,6 +524,8 @@ function TaskRow({
   editRepeatType,
   editRepeatStartDate,
   editDeadlineDate,
+  editEffort,
+  editShopping,
   isDragging,
   disabled,
   onSelectChange,
@@ -526,6 +540,8 @@ function TaskRow({
   onEditRepeatTypeChange,
   onEditRepeatStartDateChange,
   onEditDeadlineDateChange,
+  onEditEffortChange,
+  onEditShoppingChange,
   onReorderDragStart,
   onReorderDragEnter,
   onReorderDragEnd,
@@ -541,6 +557,8 @@ function TaskRow({
   editRepeatType: TaskRepeatType
   editRepeatStartDate: string
   editDeadlineDate: string
+  editEffort: TaskEffort | ''
+  editShopping: boolean
   isDragging: boolean
   disabled: boolean
   onSelectChange: (taskId: string, selected: boolean) => void
@@ -555,6 +573,8 @@ function TaskRow({
   onEditRepeatTypeChange: (value: TaskRepeatType) => void
   onEditRepeatStartDateChange: (value: string) => void
   onEditDeadlineDateChange: (value: string) => void
+  onEditEffortChange: (value: TaskEffort | '') => void
+  onEditShoppingChange: (value: boolean) => void
   onReorderDragStart: (taskId: string, group: TaskReorderGroup) => void
   onReorderDragEnter: (taskId: string, group: TaskReorderGroup) => void
   onReorderDragEnd: () => void
@@ -805,6 +825,31 @@ function TaskRow({
               disabled={disabled}
             />
           </label>
+          <label className="field-group">
+            <span className="field-label">Effort</span>
+            <select
+              value={editEffort}
+              onChange={(event) =>
+                onEditEffortChange(event.target.value as TaskEffort | '')
+              }
+              disabled={disabled}
+            >
+              {TASK_EFFORT_OPTIONS.map((option) => (
+                <option value={option.value} key={option.value || 'none'}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="checkbox-field">
+            <span className="field-label">Shopping:</span>
+            <input
+              type="checkbox"
+              checked={editShopping}
+              onChange={(event) => onEditShoppingChange(event.target.checked)}
+              disabled={disabled}
+            />
+          </label>
           <div className="task-edit-actions">
             <button className="primary-button" type="submit" disabled={disabled}>
               Save
@@ -866,6 +911,8 @@ function App() {
     getLocalDateKey,
   )
   const [newTaskDeadlineDate, setNewTaskDeadlineDate] = useState('')
+  const [newTaskEffort, setNewTaskEffort] = useState<TaskEffort | ''>('')
+  const [newTaskShopping, setNewTaskShopping] = useState(false)
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null)
   const [editingTaskText, setEditingTaskText] = useState('')
   const [editingTaskRepeatType, setEditingTaskRepeatType] =
@@ -873,6 +920,10 @@ function App() {
   const [editingTaskRepeatStartDate, setEditingTaskRepeatStartDate] =
     useState(getLocalDateKey)
   const [editingTaskDeadlineDate, setEditingTaskDeadlineDate] = useState('')
+  const [editingTaskEffort, setEditingTaskEffort] = useState<TaskEffort | ''>(
+    '',
+  )
+  const [editingTaskShopping, setEditingTaskShopping] = useState(false)
   const [newGroceryItemText, setNewGroceryItemText] = useState('')
   const [showCompleted, setShowCompleted] = useState(false)
   const [projectsLoading, setProjectsLoading] = useState(false)
@@ -949,6 +1000,8 @@ function App() {
     setNewTaskRepeatType('none')
     setNewTaskRepeatStartDate(getLocalDateKey())
     setNewTaskDeadlineDate('')
+    setNewTaskEffort('')
+    setNewTaskShopping(false)
   }
 
   function clearAppState() {
@@ -970,6 +1023,8 @@ function App() {
     setEditingTaskRepeatType('none')
     setEditingTaskRepeatStartDate(getLocalDateKey())
     setEditingTaskDeadlineDate('')
+    setEditingTaskEffort('')
+    setEditingTaskShopping(false)
     setNewGroceryItemText('')
     setShowCompleted(false)
     setDraggingProjectId(null)
@@ -1832,12 +1887,16 @@ function App() {
     repeatType: TaskRepeatType,
     repeatStartDate: string,
     deadlineDate: string,
+    effort: TaskEffort | '',
+    shopping: boolean,
   ) {
     return {
       repeat_type: repeatType,
       repeat_start_date:
         repeatType === 'none' ? null : repeatStartDate || getLocalDateKey(),
       deadline_date: deadlineDate || null,
+      effort: effort || null,
+      shopping,
     }
   }
 
@@ -1855,6 +1914,8 @@ function App() {
     setEditingTaskRepeatType(getTaskRepeatType(task))
     setEditingTaskRepeatStartDate(task.repeat_start_date ?? getLocalDateKey())
     setEditingTaskDeadlineDate(task.deadline_date ?? '')
+    setEditingTaskEffort(task.effort ?? '')
+    setEditingTaskShopping(Boolean(task.shopping))
     setTaskActionError(null)
   }
 
@@ -1905,6 +1966,8 @@ function App() {
             editingTaskRepeatType,
             editingTaskRepeatStartDate,
             editingTaskDeadlineDate,
+            editingTaskEffort,
+            editingTaskShopping,
           ),
         })
         .eq('id', task.id)
@@ -1956,6 +2019,8 @@ function App() {
         newTaskRepeatType,
         newTaskRepeatStartDate,
         newTaskDeadlineDate,
+        newTaskEffort,
+        newTaskShopping,
       )
       const { error } = await supabase.from('tasks').insert(
         isDailyTask
@@ -2487,6 +2552,8 @@ function App() {
       editRepeatType={editingTaskRepeatType}
       editRepeatStartDate={editingTaskRepeatStartDate}
       editDeadlineDate={editingTaskDeadlineDate}
+      editEffort={editingTaskEffort}
+      editShopping={editingTaskShopping}
       isDragging={draggingTask?.id === task.id}
       disabled={isBusy}
       onSelectChange={handleSelectTask}
@@ -2501,6 +2568,8 @@ function App() {
       onEditRepeatTypeChange={handleEditingTaskRepeatTypeChange}
       onEditRepeatStartDateChange={setEditingTaskRepeatStartDate}
       onEditDeadlineDateChange={setEditingTaskDeadlineDate}
+      onEditEffortChange={setEditingTaskEffort}
+      onEditShoppingChange={setEditingTaskShopping}
       onReorderDragStart={handleTaskDragStart}
       onReorderDragEnter={handleTaskDragEnter}
       onReorderDragEnd={handleTaskDragEnd}
@@ -2728,6 +2797,33 @@ function App() {
                     disabled={Boolean(configError) || taskSubmitting}
                   />
                 </label>
+                <label className="field-group">
+                  <span className="field-label">Effort</span>
+                  <select
+                    value={newTaskEffort}
+                    onChange={(event) =>
+                      setNewTaskEffort(event.target.value as TaskEffort | '')
+                    }
+                    disabled={Boolean(configError) || taskSubmitting}
+                  >
+                    {TASK_EFFORT_OPTIONS.map((option) => (
+                      <option value={option.value} key={option.value || 'none'}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="checkbox-field">
+                  <span className="field-label">Shopping:</span>
+                  <input
+                    type="checkbox"
+                    checked={newTaskShopping}
+                    onChange={(event) =>
+                      setNewTaskShopping(event.target.checked)
+                    }
+                    disabled={Boolean(configError) || taskSubmitting}
+                  />
+                </label>
                 <div className="task-create-actions">
                   <button
                     className="primary-button"
@@ -2950,6 +3046,33 @@ function App() {
                     value={newTaskDeadlineDate}
                     onChange={(event) =>
                       setNewTaskDeadlineDate(event.target.value)
+                    }
+                    disabled={Boolean(configError) || taskSubmitting}
+                  />
+                </label>
+                <label className="field-group">
+                  <span className="field-label">Effort</span>
+                  <select
+                    value={newTaskEffort}
+                    onChange={(event) =>
+                      setNewTaskEffort(event.target.value as TaskEffort | '')
+                    }
+                    disabled={Boolean(configError) || taskSubmitting}
+                  >
+                    {TASK_EFFORT_OPTIONS.map((option) => (
+                      <option value={option.value} key={option.value || 'none'}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="checkbox-field">
+                  <span className="field-label">Shopping:</span>
+                  <input
+                    type="checkbox"
+                    checked={newTaskShopping}
+                    onChange={(event) =>
+                      setNewTaskShopping(event.target.checked)
                     }
                     disabled={Boolean(configError) || taskSubmitting}
                   />

@@ -27,6 +27,8 @@ export type TaskRepeatType =
   | 'monthly'
   | 'yearly'
 
+export type TaskEffort = '5_minutes' | '15_minutes' | '30_minutes' | '1_hour_plus'
+
 export type Project = {
   id: string
   user_id: string
@@ -48,6 +50,8 @@ export type Task = {
   repeat_type: TaskRepeatType
   repeat_start_date: string | null
   deadline_date: string | null
+  effort: TaskEffort | null
+  shopping: boolean
   sort_order: number | null
   created_at: string | null
 }
